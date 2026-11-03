@@ -1,5 +1,7 @@
 # Updating over the internet with GitHub
 
+> The newer, automatic and signed way is described in **UPDATES.md**. A token is only needed if the repository stays private.
+
 GitHub builds the software for you and keeps it in a "release". In Kiosk Admin, **Admin tools > Update software from GitHub...** downloads the newest release and sends it to the selected PCs (only changed files are sent, exactly like the normal "Update software...").
 
 ## One-time setup

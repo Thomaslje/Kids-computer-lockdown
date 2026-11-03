@@ -45,6 +45,8 @@ public class KioskConfig
     public string? ExitPasswordHash { get; set; }
     public List<Tile> Tiles { get; set; } = new();
     public List<ScreenText> Texts { get; set; } = new();
+    /// <summary>The PC checks GitHub by itself and updates the kiosk software when it is idle.</summary>
+    public bool AutoUpdate { get; set; }
 }
 
 public record SteamGame(string AppId, string Name);

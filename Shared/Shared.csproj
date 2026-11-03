@@ -6,4 +6,11 @@
     <RootNamespace>KioskShared</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+  <!-- Build.ps1 passes -p:ReleaseTag=... and -p:SigningPublicKey=... -->
+  <ItemGroup Condition="'$(ReleaseTag)' != ''">
+    <AssemblyMetadata Include="ReleaseTag" Value="$(ReleaseTag)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(SigningPublicKey)' != ''">
+    <AssemblyMetadata Include="SigningPublicKey" Value="$(SigningPublicKey)" />
+  </ItemGroup>
 </Project>

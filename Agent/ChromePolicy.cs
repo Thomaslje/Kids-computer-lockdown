@@ -21,6 +21,7 @@ static class ChromePolicy
             SetDword(k, "BrowserSignin", 0);
             SetDword(k, "SyncDisabled", 1);
             SetDword(k, "PasswordManagerEnabled", 0);
+            SetDword(k, "BackgroundModeEnabled", 0);         // Chrome really closes when its window is closed
             SetList(k, "ExtensionInstallBlocklist", new[] { "*" });
             SetList(k, "URLBlocklist", new[]
             {
@@ -40,7 +41,7 @@ static class ChromePolicy
             if (k == null) return;
             foreach (var n in new[]
                 { "DownloadRestrictions", "DeveloperToolsAvailability", "IncognitoModeAvailability", "BrowserGuestModeEnabled",
-                  "AllowFileSelectionDialogs", "BrowserSignin", "SyncDisabled", "PasswordManagerEnabled" })
+                  "AllowFileSelectionDialogs", "BrowserSignin", "SyncDisabled", "PasswordManagerEnabled", "BackgroundModeEnabled" })
                 k.DeleteValue(n, false);
             k.DeleteSubKeyTree("ExtensionInstallBlocklist", false);
             k.DeleteSubKeyTree("URLBlocklist", false);

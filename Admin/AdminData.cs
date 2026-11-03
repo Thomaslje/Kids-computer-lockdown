@@ -27,6 +27,9 @@ public class AdminData
     public string? UserLockHash { get; set; }         // the friendly password: opens only Restart / Shut down
     public string? GitHubRepo { get; set; }           // "owner/repo"
     public string? GitHubToken { get; set; }          // encrypted for this Windows user
+    public bool CheckForUpdates { get; set; } = true;   // look for a new admin app version at start
+    public bool AutoUpdateApp { get; set; }             // install it without asking
+    public string? SkippedTag { get; set; }             // "don't remind me about this version"
     public List<SavedProgram> Programs { get; set; } = new();
     public string InstallArgs { get; set; } = "";
     public string? InstallFolder { get; set; }

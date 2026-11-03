@@ -1,5 +1,5 @@
-# Builds the kiosk software on GitHub and publishes it as a release.
-# Start it by pushing a tag that begins with v (for example v2026.11.03), or run it by hand from the Actions tab.
+# Builds the kiosk software on GitHub, signs it and publishes it as a release.
+# Run it by hand from the Actions tab (Run workflow), or push a tag that begins with v.
 name: Build and release
 
 on:
@@ -13,19 +13,29 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Check the signing key
+        shell: pwsh
+        run: dotnet run --project tools/Signer -c Release -- check signing-public-key.txt
 
       - name: Install Inno Setup (for the installer .exe files)
         run: choco install innosetup -y --no-progress
 
       - name: Build everything
         shell: pwsh
-        run: .\Build.ps1
+        run: .\Build.ps1 -ReleaseTag $env:RELEASE_TAG
 
       - name: Package
         shell: pwsh
@@ -33,13 +43,31 @@ jobs:
           Compress-Archive -Path dist\kiosk\* -DestinationPath dist\kiosk-update.zip
           Compress-Archive -Path dist\admin\* -DestinationPath dist\admin.zip
 
+      - name: Sign
+        shell: pwsh
+        run: dotnet run --project tools/Signer -c Release -- sign dist/kiosk-update.zip dist/admin.zip dist/KioskAdminSetup.exe
+
+      - name: Write the release notes
+        shell: pwsh
+        run: |
+          $prev = (gh release list --limit 1 --json tagName --jq '.[0].tagName') 2>$null
+          $lines = $null
+          if ($prev) { $lines = git log "$prev..HEAD" --pretty=format:"- %s" --no-merges 2>$null }
+          if (-not $lines) { $lines = git log -20 --pretty=format:"- %s" --no-merges }
+          if (-not $lines) { $lines = "- No recorded changes" }
+          $lines | Set-Content notes.md -Encoding utf8
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Build {0}', github.run_number) }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          body_path: notes.md
           files: |
             dist/kiosk-update.zip
+            dist/kiosk-update.zip.sig
             dist/admin.zip
+            dist/admin.zip.sig
             dist/KioskSetup.exe
             dist/KioskAdminSetup.exe
+            dist/KioskAdminSetup.exe.sig

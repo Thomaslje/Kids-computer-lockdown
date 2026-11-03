@@ -9,6 +9,8 @@ DefaultGroupName=Kiosk Admin
 OutputDir=..\dist
 OutputBaseFilename=KioskAdminSetup
 WizardStyle=modern
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
 
 [Files]
 Source: "..\scripts\Setup-Network.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -19,5 +21,5 @@ Name: "{group}\Kiosk Admin"; Filename: "{app}\KioskAdmin.exe"
 Name: "{autodesktop}\Kiosk Admin"; Filename: "{app}\KioskAdmin.exe"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Setup-Network.ps1"""; Flags: runhidden waituntilterminated; StatusMsg: "Setting the network to Private and turning on discovery..."
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Setup-Network.ps1"""; Flags: runhidden waituntilterminated; Check: IsAdminInstallMode; StatusMsg: "Setting the network to Private and turning on discovery..."
 Filename: "{app}\KioskAdmin.exe"; Description: "Start Kiosk Admin"; Flags: nowait postinstall skipifsilent

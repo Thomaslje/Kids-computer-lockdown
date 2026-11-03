@@ -9,6 +9,8 @@ static class InstallRunner
 {
     static readonly ConcurrentDictionary<string, InstallStatus> Jobs = new();
 
+    public static bool AnyRunning => Jobs.Values.Any(j => !j.Done);
+
     public static string Start(InstallRequest r)
     {
         string path;

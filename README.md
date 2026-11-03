@@ -103,3 +103,6 @@ A program tile's path may use `*` (in any folder or file name) and environment v
 
 ## GitHub updates
 See GITHUB.md: a GitHub Actions workflow (.github/workflows/build.yml) builds a release; **Admin tools > Update software from GitHub...** downloads it and sends it to the selected PCs.
+
+## Automatic updates
+The admin app checks GitHub at start and offers the new version with its change list; kiosk PCs can update themselves when idle. All downloads are signature checked. See UPDATES.md.

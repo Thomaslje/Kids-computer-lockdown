@@ -78,6 +78,49 @@ public static class Updater
         return (agent, launcher);
     }
 
+    /// <summary>
+    /// Installs a downloaded release zip: only the Agent and Launcher files that differ from what is installed
+    /// (other files in the zip, like the scripts, are ignored).
+    /// </summary>
+    public static (bool Agent, bool Launcher) ApplyZipFile(string zipPath)
+    {
+        var agentDir = Path.GetFullPath(Path.Combine(InstallRoot, "Agent")) + Path.DirectorySeparatorChar;
+        var launcherDir = Path.GetFullPath(Path.Combine(InstallRoot, "Launcher")) + Path.DirectorySeparatorChar;
+        bool agent = false, launcher = false;
+
+        using var zip = ZipFile.OpenRead(zipPath);
+        var work = new List<(ZipArchiveEntry Entry, string Target)>();
+        foreach (var e in zip.Entries)
+        {
+            if (string.IsNullOrEmpty(e.Name)) continue;
+            var rel = e.FullName.Replace('\\', '/').Replace('/', Path.DirectorySeparatorChar);
+            var target = Path.GetFullPath(Path.Combine(InstallRoot, rel));
+            if (!target.StartsWith(agentDir, StringComparison.OrdinalIgnoreCase) &&
+                !target.StartsWith(launcherDir, StringComparison.OrdinalIgnoreCase)) continue;   // not a program file
+            work.Add((e, target));
+        }
+        if (!work.Any(w => w.Target.EndsWith("KioskAgent.exe", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("The release does not contain the agent");
+
+        foreach (var (e, target) in work)
+        {
+            if (File.Exists(target))
+            {
+                using var es = e.Open();
+                using var fs = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (System.Security.Cryptography.SHA256.HashData(es).AsSpan().SequenceEqual(System.Security.Cryptography.SHA256.HashData(fs)))
+                    continue;   // unchanged
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            var tmp = target + ".new";
+            e.ExtractToFile(tmp, true);
+            if (File.Exists(target)) File.Move(target, target + ".old-" + Guid.NewGuid().ToString("N")[..8]);
+            File.Move(tmp, target);
+            if (target.StartsWith(agentDir, StringComparison.OrdinalIgnoreCase)) agent = true; else launcher = true;
+        }
+        return (agent, launcher);
+    }
+
     public static void CleanupOld()
     {
         try

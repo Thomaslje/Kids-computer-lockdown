@@ -17,6 +17,8 @@ static class ExecRunner
     static readonly ConcurrentDictionary<string, Job> Jobs = new();
     const int MaxChars = 2_000_000;
 
+    public static bool AnyRunning => Jobs.Values.Any(j => !j.Done);
+
     public static string Start(ExecRequest r)
     {
         var id = Guid.NewGuid().ToString("N");

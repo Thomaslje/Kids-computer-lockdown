@@ -13,6 +13,7 @@ public class AgentWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
         NetworkSetup.StartLoop();
+        AutoUpdater.StartLoop();
         _ = Task.Run(DefenderExclusions.Ensure);   // before any update can arrive
         ChromePolicy.Apply();
         Updater.CleanupOld();
@@ -103,10 +104,12 @@ public class AgentWorker : BackgroundService
                     return Ok(Json.To(ShareSetup.Apply()));
 
                 case "upload-start":
+                    Activity.Transfer();
                     FileTransfer.Start(Json.From<UploadStart>(req.Data ?? "")!);
                     return Ok();
 
                 case "upload-chunk":
+                    Activity.Transfer();
                     FileTransfer.Chunk(Json.From<UploadChunk>(req.Data ?? "")!);
                     return Ok();
 
@@ -124,6 +127,9 @@ public class AgentWorker : BackgroundService
                     var l = Json.From<LaunchRequest>(req.Data ?? "")!;
                     if (string.IsNullOrWhiteSpace(l.Path)) return Fail("No program given");
                     WriteCommand("launchapp", l.Path.Trim(), l.Args);   // started inside the kids' session by the launcher
+                    if (l.Path.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        Activity.TrackName(Path.GetFileNameWithoutExtension(l.Path.Trim()));
+                    else Activity.Touch(TimeSpan.FromMinutes(15));   // cannot follow a Store app by name
                     return Ok();
                 }
 
@@ -144,7 +150,7 @@ public class AgentWorker : BackgroundService
                 {
                     var l = Json.From<LaunchAdminRequest>(req.Data ?? "")!;
                     if (string.IsNullOrWhiteSpace(l.Path)) return Fail("No program given");
-                    SessionLauncher.Start(l.Path.Trim(), l.Args ?? "");
+                    Activity.TrackPid(SessionLauncher.Start(l.Path.Trim(), l.Args ?? ""));
                     WriteCommand("front");   // the kiosk screen steps back so the tool is visible
                     return Ok();
                 }
@@ -185,10 +191,12 @@ public class AgentWorker : BackgroundService
                     return Ok(Json.To(Updater.Hashes()));
 
                 case "update-start":
+                    Activity.Transfer();
                     Updater.Start(Json.From<UpdateStart>(req.Data ?? "")!);
                     return Ok();
 
                 case "update-chunk":
+                    Activity.Transfer();
                     Updater.Chunk(Json.From<UpdateChunk>(req.Data ?? "")!);
                     return Ok();
 
@@ -241,5 +249,5 @@ public class AgentWorker : BackgroundService
         Process.Start(new ProcessStartInfo("shutdown.exe", args) { CreateNoWindow = true, UseShellExecute = false });
 
     // Exiting with an error (not a clean stop) makes Windows restart the service, now running the new files.
-    static void RestartSoon() => Task.Run(async () => { await Task.Delay(3000); Environment.Exit(1); });
+    internal static void RestartSoon() => Task.Run(async () => { await Task.Delay(3000); Environment.Exit(1); });
 }

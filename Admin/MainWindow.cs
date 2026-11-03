@@ -111,6 +111,26 @@ public class MainWindow : Window
         var ghSet = new MenuItem { Header = "GitHub settings..." };
         ghSet.Click += (_, _) => GitHubSettings();
         adminMenu.Items.Add(gh); adminMenu.Items.Add(ghSet);
+
+        var updMenu = new MenuItem { Header = "Updates" };
+        var checkAtStart = new MenuItem { Header = "Check for a new admin app version at start", IsCheckable = true, IsChecked = _d.CheckForUpdates };
+        checkAtStart.Click += (_, _) => { _d.CheckForUpdates = checkAtStart.IsChecked; _d.Save(); };
+        var autoApp = new MenuItem { Header = "Install admin app updates automatically (no question)", IsCheckable = true, IsChecked = _d.AutoUpdateApp };
+        autoApp.Click += (_, _) => { _d.AutoUpdateApp = autoApp.IsChecked; _d.Save(); };
+        var checkNow = new MenuItem { Header = "Check for an admin app update now" };
+        checkNow.Click += async (_, _) => await CheckAppUpdateAsync(true);
+        var kioskAuto = new MenuItem
+        {
+            Header = "Kiosk PCs update themselves from GitHub when idle (push the setup to apply)",
+            IsCheckable = true, IsChecked = _d.Config.AutoUpdate
+        };
+        kioskAuto.Click += (_, _) => { _d.Config.AutoUpdate = kioskAuto.IsChecked; _d.Save(); _status.Text = "Saved. Use \"Push to selected PCs\" to send this to the PCs."; };
+        var newKey = new MenuItem { Header = "Create update signing key..." };
+        newKey.Click += (_, _) => CreateSigningKey();
+        updMenu.Items.Add(checkNow); updMenu.Items.Add(checkAtStart); updMenu.Items.Add(autoApp);
+        updMenu.Items.Add(new Separator()); updMenu.Items.Add(kioskAuto);
+        updMenu.Items.Add(new Separator()); updMenu.Items.Add(newKey);
+        adminMenu.Items.Add(updMenu);
         var remote = new MenuItem { Header = "Console, processes, services, programs, screenshot..." };
         remote.Click += (_, _) => OpenRemoteTools();
         adminMenu.Items.Add(remote);
@@ -199,7 +219,7 @@ public class MainWindow : Window
 
         _timer.Tick += async (_, _) => await RefreshAsync();
         _timer.Start();
-        Loaded += async (_, _) => await RefreshAsync();
+        Loaded += async (_, _) => { await CheckAppUpdateAsync(false); await RefreshAsync(); };
         Closing += (_, _) => { _d.Config.Title = _titleBox.Text; _d.Save(); };
     }
 
@@ -799,12 +819,12 @@ public class MainWindow : Window
 
     bool GitHubSettings()
     {
-        var repo = new TextBox { Text = _d.GitHubRepo ?? "", Margin = new Thickness(0, 4, 0, 4) };
+        var repo = new TextBox { Text = GitHubUpdate.Repo(_d), Margin = new Thickness(0, 4, 0, 4) };
         var token = new PasswordBox { Margin = new Thickness(0, 4, 0, 4) };
         if (!Ui.Ask(this, "GitHub settings",
-                Ui.Label("Repository, written owner/name (for example thomas/kiosk-suite):"), repo,
+                Ui.Label("Repository, written owner/name:"), repo,
                 Ui.Label(string.IsNullOrEmpty(_d.GitHubToken)
-                    ? "Access token (a fine-grained token with read access to Contents of that repository):"
+                    ? "Access token (only needed if the repository is private; otherwise leave empty):"
                     : "Access token (leave empty to keep the saved one):"), token)) return false;
 
         var r = repo.Text.Trim();
@@ -814,7 +834,6 @@ public class MainWindow : Window
             return false;
         }
         if (token.Password.Length > 0) _d.GitHubToken = GitHubUpdate.Protect(token.Password.Trim());
-        if (string.IsNullOrEmpty(_d.GitHubToken)) { MessageBox.Show(this, "A token is needed.", "GitHub settings"); return false; }
         _d.GitHubRepo = r;
         _d.Save();
         _status.Text = "GitHub settings saved.";
@@ -825,27 +844,81 @@ public class MainWindow : Window
     {
         var targets = _pcList.SelectedItems.Cast<PcItem>().ToList();
         if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return; }
-        if (string.IsNullOrEmpty(_d.GitHubRepo) || string.IsNullOrEmpty(_d.GitHubToken))
-            if (!GitHubSettings()) return;
-
-        var token = GitHubUpdate.Unprotect(_d.GitHubToken!);
-        if (token == "") { _status.Text = "The saved token cannot be read on this account: enter it again."; if (!GitHubSettings()) return; token = GitHubUpdate.Unprotect(_d.GitHubToken!); }
 
         _busy = true;
         try
         {
             _status.Text = "Checking GitHub...";
-            var rel = await GitHubUpdate.LatestAsync(Http, _d.GitHubRepo!, token);
+            var repo = GitHubUpdate.Repo(_d);
+            var token = GitHubUpdate.Token(_d);
+            var rel = await Releases.LatestAsync(Http, repo, token);
+            var notes = string.IsNullOrWhiteSpace(rel.Body) ? "" : "\n\nWhat's new:\n" + (rel.Body.Length > 1200 ? rel.Body[..1200] + "..." : rel.Body);
+            var signed = BuildInfo.SigningPublicKey != "" ? "" : "\n\nWARNING: this admin app has no signing key built in, so the download cannot be checked.";
             if (MessageBox.Show(this,
-                    $"Latest release on GitHub: {rel.Tag} ({rel.Size / 1048576.0:0.#} MB)\n\nSend it to: {string.Join(", ", targets.Select(t => t.Name))}?\n\nOnly changed files are sent. The kids' screen restarts for a moment.",
+                    $"Latest release on GitHub: {rel.Tag}\n\nSend it to: {string.Join(", ", targets.Select(t => t.Name))}?\n\nOnly changed files are sent. The kids' screen restarts for a moment.{notes}{signed}",
                     "Update from GitHub", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) { _status.Text = ""; return; }
             _status.Text = "Downloading " + rel.Tag + "...";
-            var folder = await GitHubUpdate.DownloadAsync(Http, _d.GitHubRepo!, token, rel);
+            var work = GitHubUpdate.NewWorkFolder();
+            var (zip, _) = await Releases.DownloadVerifiedAsync(Http, repo, token, rel, GitHubUpdate.KioskAsset, work, requireSignature: false);
+            var folder = GitHubUpdate.ExtractKiosk(zip);
             _busy = false;
             await RunUpdateAsync(targets, folder, false);
         }
         catch (Exception ex) { _status.Text = "GitHub: " + ex.Message; }
         finally { _busy = false; }
+    }
+
+    /// <summary>Looks for a newer admin app; asks (or just installs) and restarts into the new version.</summary>
+    async Task CheckAppUpdateAsync(bool manual)
+    {
+        if (!manual && !_d.CheckForUpdates) return;
+        try
+        {
+            if (manual) _status.Text = "Checking for an update...";
+            var rel = await AppUpdater.CheckAsync(Http, _d, manual);
+            if (rel == null) { if (manual) _status.Text = BuildInfo.ReleaseTag == "dev" ? "This is a local build; there is nothing to compare." : "You have the newest version."; return; }
+            if (!manual && rel.Tag == _d.SkippedTag) return;
+
+            var choice = UpdateChoice.Update;
+            if (manual || !_d.AutoUpdateApp)
+            {
+                var win = new UpdatePromptWindow(IsLoaded ? this : null, rel);
+                win.ShowDialog();
+                choice = win.Choice;
+            }
+            if (choice == UpdateChoice.Skip) { _d.SkippedTag = rel.Tag; _d.Save(); _status.Text = ""; return; }
+            if (choice != UpdateChoice.Update) { _status.Text = ""; return; }
+
+            _busy = true;
+            if (await AppUpdater.UpdateAsync(Http, _d, rel, t => _status.Text = t))
+                Application.Current.Shutdown();
+        }
+        catch (Exception ex) { _status.Text = "Update: " + ex.Message; }
+        finally { _busy = false; }
+    }
+
+    void CreateSigningKey()
+    {
+        if (MessageBox.Show(this,
+                "This creates the key pair that protects your updates.\n\n" +
+                "- The PRIVATE key goes into a GitHub secret named SIGNING_KEY (you copy it once).\n" +
+                "- The PUBLIC key is saved as signing-public-key.txt, which you add to the repository.\n\n" +
+                "If you already have a key, do not make a new one: apps built with the old key will refuse updates signed with the new one.\n\nContinue?",
+                "Update signing key", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var (priv, pub) = Signing.NewKeyPair();
+        var box = new TextBox { Text = priv, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Height = 90, Margin = new Thickness(0, 4, 0, 4) };
+        var copy = new Button { Content = "Copy private key", Padding = new Thickness(10, 4, 10, 4), HorizontalAlignment = HorizontalAlignment.Left };
+        copy.Click += (_, _) => { Clipboard.SetText(priv); copy.Content = "Copied"; };
+        var save = new Button { Content = "Save signing-public-key.txt...", Padding = new Thickness(10, 4, 10, 4), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        save.Click += (_, _) =>
+        {
+            var dlg = new SaveFileDialog { FileName = "signing-public-key.txt", Filter = "Text|*.txt" };
+            if (dlg.ShowDialog(this) == true) { File.WriteAllText(dlg.FileName, pub); save.Content = "Saved"; }
+        };
+        Ui.Ask(this, "Update signing key",
+            Ui.Label("1. Copy the private key and paste it into the GitHub secret SIGNING_KEY. Keep it secret; it is not stored anywhere else."), box, copy,
+            Ui.Label("2. Save the public key file and put it in the root of your repository."), save);
     }
 
     async Task<(string Pc, bool Ok, string Msg)> UpdateOneAsync(PcItem pc, string folder, Dictionary<string, string> local)

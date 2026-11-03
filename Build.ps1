@@ -1,6 +1,6 @@
 # Builds everything. Needs the free .NET 8 SDK (https://dotnet.microsoft.com/download/dotnet/8.0).
 # Optional: Inno Setup 6 (https://jrsoftware.org/isinfo.php) turns the result into real installer .exe files.
-param([switch]$Quick)   # -Quick: build only the kids' PC software (faster): no admin app, no installers
+param([switch]$Quick, [string]$ReleaseTag = "dev")   # -Quick: build only the kids' PC software (faster): no admin app, no installers
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $dist = Join-Path $root "dist"
@@ -12,10 +12,16 @@ foreach ($p in "Shared","Agent","Launcher","Admin") {
     if (-not (dotnet sln "$root\KioskSuite.sln" list | Select-String "$p.csproj")) { dotnet sln "$root\KioskSuite.sln" add "$root\$p\$p.csproj" | Out-Null }
 }
 
+# Built-in update settings: the release name (so apps know their own version) and the public signing key
+$extra = @("-p:ReleaseTag=$ReleaseTag")
+$keyFile = Join-Path $root "signing-public-key.txt"
+if (Test-Path $keyFile) { $extra += "-p:SigningPublicKey=$((Get-Content $keyFile -Raw).Trim())" }
+else { Write-Host "No signing-public-key.txt: this build will not install downloaded updates." -ForegroundColor Yellow }
+
 $projects = if ($Quick) { @("Agent", "Launcher") } else { @("Agent", "Launcher", "Admin") }
 foreach ($p in $projects) {
     Write-Host "Building $p ..." -ForegroundColor Cyan
-    dotnet publish "$root\$p\$p.csproj" -c Release -r win-x64 --self-contained true -o "$dist\build\$p"
+    dotnet publish "$root\$p\$p.csproj" -c Release -r win-x64 --self-contained true @extra -o "$dist\build\$p"
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $p" }
 }
 
