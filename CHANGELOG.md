@@ -1,0 +1,35 @@
+# Changelog
+
+Releases are numbered `build-N` on GitHub. From now on the release notes are made automatically from the commit messages; this file records what the suite gained before that.
+
+## build-2 (2026-11-03) - signed automatic updates
+- The admin app checks GitHub at start and shows a popup with the change list: update and open, open without updating, or don't remind me about this version.
+- Option to install admin app updates automatically; works without administrator rights when the app is installed "for me only".
+- Kiosk PCs can update themselves from GitHub, only while idle (no tile program, Chrome, Steam game, admin-started tool, install, command or file transfer running).
+- All downloaded updates are signature checked (ECDSA); the signing key is created from the admin app (Admin tools > Updates).
+- The repository is public; an access token is only needed for a private one.
+- Chrome background mode is switched off on the kids' PCs so a lingering Chrome does not count as busy.
+
+## build-1 (2026-11-03) - first GitHub release
+- Build and release workflow on GitHub Actions: kids' PC update zip, admin zip and both installers.
+- Admin app: update the kids' PCs from GitHub (Admin tools > Update software from GitHub).
+
+## Before GitHub (all earlier versions)
+**Kiosk and launcher**
+- Fullscreen locked-down launcher with tiles for Steam games, programs (.exe) and Chrome.
+- Windows service agent on every kids' PC, paired with the admin app by an encrypted key.
+- "Close first" option on a tile (for example Roblox, so the launcher closes the game before starting it again) with a delay so repeated clicks do nothing.
+- Update-proof program paths with wildcards (Roblox and games that change folder on every update).
+- Chrome policies for kiosk use.
+- Installers set the network profile to Private and turn on discovery and sharing, so the PC can be reached by the admin app.
+- Kiosk shortcut, Defender exclusions and a remote uninstall that removes the kiosk, restarts the PC back to the normal login screen and removes it from the admin list.
+
+**Admin app**
+- Scan the network, add PCs, push the setup, unlock, restart and shut down remotely.
+- Update software on the PCs from a folder, sending only changed files.
+- Tweaks menu (power plan, screen and sleep never off, and others).
+- Tools menu: share folder without password and file copying, silent installs of programs (such as the NVIDIA driver) with your own switches, start a program on the kids' PCs that is not a tile.
+- Admin tools menu: command prompt, PowerShell, Task Manager and more opened on the PC's screen with administrator rights; console, processes, services, programs and screenshot.
+- Start password for the admin app and a friendly password that opens a simple window with only restart and shut down.
+- TeamViewer ID of every PC shown in both views.
+- Status text at the bottom fades away after commands.
