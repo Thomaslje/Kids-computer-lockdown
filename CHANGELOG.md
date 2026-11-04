@@ -2,6 +2,15 @@
 
 Releases are numbered `build-N` on GitHub. From now on the release notes are made automatically from the commit messages; this file records what the suite gained before that.
 
+## Next release - new look for the admin app
+- Sidebar layout (PCs, Kids' screen, Admin tools, Tweaks, Updates, Passwords and key) with teal and orange colours.
+- Overview cards (PCs online, offline, not on the newest software) and a coloured status dot for every PC.
+- "New version available" banner when you chose "No" in the update popup.
+- New app icon (shield with a screen) in the program, the installer and the taskbar.
+- Lock app button in the sidebar (when a start password is set).
+- The built-in KFUM logo is gone from the kids' screen.
+- New "Logo..." button on the Kids' screen page: pick your own picture and choose the corner (lower right is the default). Push the setup to send it to the PCs.
+
 ## build-2 (2026-11-03) - signed automatic updates
 - The admin app checks GitHub at start and shows a popup with the change list: update and open, open without updating, or don't remind me about this version.
 - Option to install admin app updates automatically; works without administrator rights when the app is installed "for me only".
