@@ -44,11 +44,14 @@ Select one or more PCs, then:
 - **Restart** / **Shut down**: 10 second countdown shown on the kids' PC.
 These need the new agent on each PC, so re-run the installer once after updating.
 
-## Updating the software on the kids' PCs (no visiting each PC)
+## Updating the software on the kids' PCs Manually (no visiting each PC)
 1. Unzip the new revision and run `.\Build.ps1 -Quick` (builds only the kids' PC software, no installers).
 2. In Kiosk Admin: select the PCs, click **Update software...**, pick the `dist\kiosk` folder.
 Only the files that changed are sent. The agent swaps them in (old files are renamed, not overwritten), the tile screen restarts by itself, and the agent restarts itself if it changed.
 Every new revision comes as a new `KioskSuite.zip`: unzip, `.\Build.ps1`, then **Update software...**. The install scripts only matter for a brand-new PC. The Kiosk Admin app itself is updated on your PC with `KioskAdminSetup.exe` / the `dist\admin` folder.
+
+## Automatic updates
+The admin app checks GitHub at start and offers the new version with its change list; kiosk PCs can update themselves when idle. All downloads are signature checked. See UPDATES.md.
 
 ## Going back to the kiosk after leaving it
 After **Unlock to desktop** (or Ctrl+Alt+Shift+K) the Kiosk account shows the normal desktop with a **Return to Kiosk** icon. Click it and the kiosk screen comes back without restarting the PC. The agent creates the icon by itself (it needs the Kiosk account to have logged in once).
@@ -103,6 +106,3 @@ A program tile's path may use `*` (in any folder or file name) and environment v
 
 ## GitHub updates
 See GITHUB.md: a GitHub Actions workflow (.github/workflows/build.yml) builds a release; **Admin tools > Update software from GitHub...** downloads it and sends it to the selected PCs.
-
-## Automatic updates
-The admin app checks GitHub at start and offers the new version with its change list; kiosk PCs can update themselves when idle. All downloads are signature checked. See UPDATES.md.
