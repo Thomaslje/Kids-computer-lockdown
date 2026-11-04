@@ -24,6 +24,7 @@ public class SimpleWindow : Window
     {
         _d = d;
         Title = "Kiosk PCs";
+        Theme.Skin(this);
         Width = 600; Height = 480; MinWidth = 420; MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
@@ -31,7 +32,7 @@ public class SimpleWindow : Window
         _list.ItemsSource = _pcs;
         var gv = new GridView();
         gv.Columns.Add(new GridViewColumn { Header = "PC", DisplayMemberBinding = new Binding("Name"), Width = 220 });
-        gv.Columns.Add(new GridViewColumn { Header = "Status", DisplayMemberBinding = new Binding("Status"), Width = 140 });
+        gv.Columns.Add(Theme.StatusColumn(140));
         gv.Columns.Insert(1, new GridViewColumn { Header = "TeamViewer ID", DisplayMemberBinding = new Binding("TeamViewer"), Width = 120 });
         _list.View = gv;
         var copyId = new MenuItem { Header = "Copy TeamViewer ID" };
@@ -45,7 +46,9 @@ public class SimpleWindow : Window
         all.Click += (_, _) => _list.SelectAll();
         var restart = new Button { Content = "Restart", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(0, 0, 8, 0) };
         restart.Click += async (_, _) => await SendAsync("restart", "Restart", "restart");
+        restart.Style = Theme.Get("PrimaryButton");
         var shutdown = new Button { Content = "Shut down", Padding = new Thickness(18, 6, 18, 6) };
+        shutdown.Style = Theme.Get("DangerButton");
         shutdown.Click += async (_, _) => await SendAsync("shutdown", "Shut down", "shut down");
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };

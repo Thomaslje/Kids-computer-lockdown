@@ -4,6 +4,9 @@ namespace KioskShared;
 
 public enum TileType { Steam, Exe, Chrome }
 
+/// <summary>Where the logo sits on the kids' screen.</summary>
+public enum LogoCorner { BottomRight, BottomLeft, TopRight, TopLeft }
+
 public class Tile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -47,6 +50,9 @@ public class KioskConfig
     public List<ScreenText> Texts { get; set; } = new();
     /// <summary>The PC checks GitHub by itself and updates the kiosk software when it is idle.</summary>
     public bool AutoUpdate { get; set; }
+    /// <summary>Your own logo (PNG, base64). Empty = no logo.</summary>
+    public string? LogoBase64 { get; set; }
+    public LogoCorner LogoCorner { get; set; } = LogoCorner.BottomRight;
 }
 
 public record SteamGame(string AppId, string Name);

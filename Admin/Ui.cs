@@ -30,6 +30,7 @@ public static class Ui
             WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize,
             ShowInTaskbar = false
         };
+        Theme.Skin(w);
         ok.Click += (_, _) => w.DialogResult = true;
         return w.ShowDialog() == true;
     }
@@ -52,6 +53,22 @@ public static class Ui
             using var ms = new MemoryStream();
             bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
             return Convert.ToBase64String(ms.ToArray());
+        }
+        catch { return null; }
+    }
+
+    public static BitmapImage? FromBase64(string? b64)
+    {
+        if (string.IsNullOrEmpty(b64)) return null;
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.StreamSource = new MemoryStream(Convert.FromBase64String(b64));
+            bi.EndInit();
+            bi.Freeze();
+            return bi;
         }
         catch { return null; }
     }

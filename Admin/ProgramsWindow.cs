@@ -15,6 +15,7 @@ public class ProgramsWindow : Window
     {
         _d = d;
         Owner = owner; Title = "Start a program on the kiosk PCs";
+        Theme.Skin(this);
         SizeToContent = SizeToContent.WidthAndHeight; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
 

@@ -14,6 +14,7 @@ public class UpdatePromptWindow : Window
     public UpdatePromptWindow(Window? owner, ReleaseInfo rel)
     {
         Title = "New version available";
+        Theme.Skin(this);
         Width = 520; Height = 440;
         WindowStartupLocation = owner != null ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen;
         if (owner != null) Owner = owner;

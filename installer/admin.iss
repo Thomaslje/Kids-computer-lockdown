@@ -9,6 +9,8 @@ DefaultGroupName=Kiosk Admin
 OutputDir=..\dist
 OutputBaseFilename=KioskAdminSetup
 WizardStyle=modern
+SetupIconFile=..\Admin\app.ico
+UninstallDisplayIcon={app}\KioskAdmin.exe
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 

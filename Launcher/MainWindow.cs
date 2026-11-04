@@ -25,6 +25,12 @@ public class MainWindow : Window
     readonly TextBlock _status = new();
     StackPanel _header = new();
     ScrollViewer _scroll = new();
+    // your own logo, placed in the chosen corner (set from the admin app)
+    readonly Image _logo = new()
+    {
+        IsHitTestVisible = false, Stretch = Stretch.Uniform, MaxWidth = 280, MaxHeight = 160,
+        Margin = new Thickness(28, 24, 28, 24), Visibility = Visibility.Collapsed
+    };
     readonly Canvas _overlay = new() { IsHitTestVisible = false };   // free text placed from the admin app
     readonly DispatcherTimer _reloadTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
     FileSystemWatcher? _watcher;
@@ -81,19 +87,8 @@ public class MainWindow : Window
         };
         _scroll = scroll;
 
-        // logo in the lower right corner, on a white card so it reads on any background
-        var logoCard = new Border
-        {
-            Background = Brushes.White, CornerRadius = new CornerRadius(20), Padding = new Thickness(16, 12, 16, 12),
-            Margin = new Thickness(0, 0, 28, 24), VerticalAlignment = VerticalAlignment.Bottom,
-            Effect = new DropShadowEffect { Color = Color.FromRgb(0x3C, 0x3C, 0x50), Opacity = 0.18, BlurRadius = 14, ShadowDepth = 3 },
-            Child = Logo.Create(190)
-        };
-        var bottom = new Grid { Margin = new Thickness(28, 8, 0, 0) };
-        bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(_status, 0); Grid.SetColumn(logoCard, 1);
-        bottom.Children.Add(_status); bottom.Children.Add(logoCard);
+        var bottom = new Grid { Margin = new Thickness(28, 8, 28, 0) };
+        bottom.Children.Add(_status);
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -113,6 +108,8 @@ public class MainWindow : Window
         }
         Grid.SetRow(header, 0); Grid.SetRow(scroll, 1); Grid.SetRow(bottom, 2);
         root.Children.Add(header); root.Children.Add(scroll); root.Children.Add(bottom);
+        Grid.SetRowSpan(_logo, 3);
+        root.Children.Add(_logo);
         Grid.SetRowSpan(_overlay, 3);
         root.Children.Add(_overlay);   // last = on top
         _overlay.SizeChanged += (_, _) => RebuildTexts();
@@ -152,6 +149,18 @@ public class MainWindow : Window
         }
         catch { /* file may be mid-write; the watcher will fire again */ }
         Rebuild();
+        ApplyLogo();
+    }
+
+    void ApplyLogo()
+    {
+        var bmp = LoadImage(_cfg.LogoBase64);
+        RenderOptions.SetBitmapScalingMode(_logo, BitmapScalingMode.HighQuality);
+        _logo.Source = bmp;
+        _logo.Visibility = bmp == null ? Visibility.Collapsed : Visibility.Visible;
+        var c = _cfg.LogoCorner;
+        _logo.HorizontalAlignment = c is LogoCorner.TopLeft or LogoCorner.BottomLeft ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        _logo.VerticalAlignment = c is LogoCorner.TopLeft or LogoCorner.TopRight ? VerticalAlignment.Top : VerticalAlignment.Bottom;
     }
 
     void StartWatcher()

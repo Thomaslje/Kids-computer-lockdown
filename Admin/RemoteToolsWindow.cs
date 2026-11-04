@@ -46,6 +46,7 @@ public class RemoteToolsWindow : Window
     {
         _key = key;
         Owner = owner; Title = "Remote tools (run as SYSTEM)";
+        Theme.Skin(this);
         Width = 900; Height = 640; MinWidth = 700; MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
