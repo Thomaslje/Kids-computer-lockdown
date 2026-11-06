@@ -548,12 +548,12 @@ public class MainWindow : Window
         _status.Text = "Creating account...";
         var results = await Task.WhenAll(send.Select(async pc =>
         {
-            try { var r = await Net.CallAsync(pc.Host, Key, "create-account", json, 30000); return (pc.Name, r.Ok, r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
-            catch (Exception ex) { return (pc.Name, false, ex.Message); }
+            try { var r = await Net.CallAsync(pc.Host, Key, "create-account", json, 30000); return (Name: pc.Name, Ok: r.Ok, Msg: r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Msg: ex.Message); }
         }));
         int done = results.Count(r => r.Ok);
         _status.Text = $"Create account: done on {done} of {results.Length} PCs." +
-            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Item3})")) : "") + TooOldText(tooOld);
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Msg})")) : "") + TooOldText(tooOld);
     }
 
     const string DeleteAccountRev = "2026-11-06-d";
@@ -613,12 +613,12 @@ public class MainWindow : Window
         _status.Text = "Deleting account...";
         var results = await Task.WhenAll(targets.Select(async pc =>
         {
-            try { var r = await Net.CallAsync(pc.Host, Key, "delete-account", json, 60000); return (pc.Name, r.Ok, r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
-            catch (Exception ex) { return (pc.Name, false, ex.Message); }
+            try { var r = await Net.CallAsync(pc.Host, Key, "delete-account", json, 60000); return (Name: pc.Name, Ok: r.Ok, Msg: r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Msg: ex.Message); }
         }));
         int done = results.Count(r => r.Ok);
         _status.Text = $"Delete account: done on {done} of {results.Length} PCs." +
-            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Item3})")) : "") +
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Msg})")) : "") +
             (unreachable.Count > 0 ? " Could not read: " + string.Join(", ", unreachable.Select(u => u.Pc.Name)) + "." : "") + TooOldText(tooOld);
     }
 
