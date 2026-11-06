@@ -150,6 +150,7 @@ public class MainWindow : Window
         catch { /* file may be mid-write; the watcher will fire again */ }
         Rebuild();
         ApplyLogo();
+        Task.Run(() => CloseCleanup.RunAll(_cfg));
     }
 
     void ApplyLogo()
@@ -510,6 +511,7 @@ public class MainWindow : Window
     {
         _busyUntil = DateTime.UtcNow.AddSeconds(lockSeconds);
         ShowStatus($"Starting {t.Name}...");
+        CloseCleanup.Watch(t);
         try
         {
             switch (t.Type)

@@ -190,6 +190,7 @@ public class MainWindow : Window
         tileButtons.Children.Add(Btn("+ Chrome", (_, _) => AddChrome(), "PrimaryButton"));
         tileButtons.Children.Add(Btn("Rename...", (_, _) => RenameTile()));
         tileButtons.Children.Add(Btn("Close first...", (_, _) => EditCloseFirst()));
+        tileButtons.Children.Add(Btn("Delete when closed...", (_, _) => EditDeleteOnClose()));
         tileButtons.Children.Add(Btn("Change path...", (_, _) => EditPath()));
         tileButtons.Children.Add(Btn("Set image...", (_, _) => SetImage()));
         tileButtons.Children.Add(Btn("Screen text...", (_, _) => EditScreenText()));
@@ -1207,6 +1208,40 @@ public class MainWindow : Window
     }
 
     const string RobloxNames = "RobloxPlayerBeta, RobloxPlayerLauncher, RobloxCrashHandler";
+
+    const string RobloxLogin = @"%LOCALAPPDATA%\Roblox\LocalStorage\*";
+
+    void EditDeleteOnClose()
+    {
+        var t = SelectedTile();
+        if (t == null) return;
+        if (t.Type == TileType.Steam) { _status.Text = "\"Delete when closed\" works for programs and Chrome, not for Steam games."; return; }
+
+        var box = new TextBox
+        {
+            Text = t.DeleteOnClose ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 110, Width = 520, Margin = new Thickness(0, 6, 0, 6)
+        };
+        var preset = Btn("Fill in the Roblox login", (_, _) =>
+        {
+            if (!box.Text.Contains(RobloxLogin)) box.Text = (box.Text.TrimEnd() + "\r\n" + RobloxLogin).Trim();
+        });
+        preset.HorizontalAlignment = HorizontalAlignment.Left;
+
+        if (!Ui.Ask(this, "Delete when closed: " + t.Name,
+                Ui.Label("Files or folders to delete from the Kiosk account when this program has been closed for a while " +
+                         "(and when the kiosk starts). One per line. You can use % variables like %LOCALAPPDATA% and * in the last part. " +
+                         "Only things inside the Kiosk account's own profile can be deleted. Leave empty to turn this off."),
+                box, preset,
+                Ui.Label("Roblox keeps the saved login in the LocalStorage folder (I believe the file is RobloxCookies.dat). " +
+                         "Test it on one PC first. Log in, close Roblox, wait a minute, then check that the login is gone.")))
+            return;
+        t.DeleteOnClose = string.IsNullOrWhiteSpace(box.Text) ? null : box.Text.Trim();
+        _d.Save();
+        _status.Text = t.DeleteOnClose == null ? "Delete when closed is off for this tile. Push the setup to apply it."
+                                               : "Delete when closed is set. Push the setup to apply it.";
+    }
 
     void EditCloseFirst()
     {

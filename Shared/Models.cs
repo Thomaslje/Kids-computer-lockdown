@@ -18,6 +18,8 @@ public class Tile
     public string? ImageBase64 { get; set; }
     /// <summary>Program names (without .exe, comma separated) that are closed before this tile starts. Empty = off.</summary>
     public string? CloseFirst { get; set; }
+    /// <summary>Files or folders (one per line, % variables and * allowed) deleted from the kiosk account when the program has been closed. Empty = off.</summary>
+    public string? DeleteOnClose { get; set; }
 
     public override string ToString() => Type switch
     {

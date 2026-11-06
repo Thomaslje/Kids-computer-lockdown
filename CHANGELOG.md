@@ -2,7 +2,11 @@
 
 Releases are numbered `build-N` on GitHub. From now on the release notes are made automatically from the commit messages; this file records what the suite gained before that.
 
-## Next release - new look for the admin app
+## Next release - delete login files when a program is closed
+- New "Delete when closed..." button for tiles (programs and Chrome): lists files or folders in the Kiosk account that are deleted when the program has been closed for 45 seconds, and when the kiosk starts. Includes a "Fill in the Roblox login" preset.
+- Only things inside the Kiosk account's own profile can be deleted, and at least two folders deep.
+
+## Earlier in this release - new look for the admin app
 - Sidebar layout (PCs, Kids' screen, Admin tools, Tweaks, Updates, Passwords and key) with teal and orange colours.
 - Overview cards (PCs online, offline, not on the newest software) and a coloured status dot for every PC.
 - "New version available" banner when you chose "No" in the update popup.
