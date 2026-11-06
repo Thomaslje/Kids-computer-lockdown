@@ -183,6 +183,15 @@ public class AgentWorker : BackgroundService
                     RunShutdown("/r /t 10 /f /c \"Restart requested from Kiosk Admin\"");
                     return Ok();
 
+                case "list-accounts":
+                    return Ok(Json.To(AccountCreator.List()));
+
+                case "delete-account":
+                    return Ok(AccountCreator.Delete(Json.From<DeleteAccountRequest>(req.Data ?? "")!));
+
+                case "create-account":
+                    return Ok(AccountCreator.Create(Json.From<CreateAccountRequest>(req.Data ?? "")!));
+
                 case "shutdown":
                     RunShutdown("/s /t 10 /f /c \"Shutdown requested from Kiosk Admin\"");
                     return Ok();

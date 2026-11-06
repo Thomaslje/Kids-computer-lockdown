@@ -6,7 +6,7 @@ namespace KioskShared;
 public static class BuildInfo
 {
     /// <summary>Shown in the admin app's PC list so you can see which version each PC runs. Also used to know which features a PC has.</summary>
-    public const string Revision = "2026-11-06-b";
+    public const string Revision = "2026-11-06-d";
 
     /// <summary>The GitHub repository the apps look at for new versions (owner/name). It must be public.</summary>
     public const string GitHubRepo = "Thomaslje/Kids-computer-lockdown";

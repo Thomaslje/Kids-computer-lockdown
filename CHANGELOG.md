@@ -2,6 +2,12 @@
 
 Releases are numbered `build-N` on GitHub. From now on the release notes are made automatically from the commit messages; this file records what the suite gained before that.
 
+## Next release - create accounts, restore UAC
+
+- New "Create account..." button: enter an account name and password, choose a group (Users, Administrators, Guests and the other built-in Windows groups) and push it to the selected PCs. If the account already exists, its password is changed and it is added to the group. The password is not stored in the admin app.
+- New "Delete account..." button: reads the local accounts from every selected PC, lists them (built-in accounts and the Kiosk account are hidden), and deletes the account you pick on every PC that has it, optionally with its files. The last administrator on a PC is never deleted.
+- New tweak "Turn User Account Control (UAC) on, default settings": restores the normal admin prompt on all accounts (restart needed).
+
 ## Next release - delete login files when a program is closed
 - New "Delete when closed..." button for tiles (programs and Chrome): lists files or folders in the Kiosk account that are deleted when the program has been closed for 45 seconds, and when the kiosk starts. Includes a "Fill in the Roblox login" preset.
 - Only things inside the Kiosk account's own profile can be deleted, and at least two folders deep.

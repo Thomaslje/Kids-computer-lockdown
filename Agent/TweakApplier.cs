@@ -64,6 +64,19 @@ static class TweakApplier
             return null;
         });
 
+        if (Has("uac-default")) Step("UAC", () =>
+        {
+            using var k = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", true);
+            k.SetValue("EnableLUA", 1, RegistryValueKind.DWord);
+            k.SetValue("ConsentPromptBehaviorAdmin", 5, RegistryValueKind.DWord);   // Windows default: prompt for consent for non-Windows programs
+            k.SetValue("ConsentPromptBehaviorUser", 3, RegistryValueKind.DWord);    // standard users: ask for admin credentials
+            k.SetValue("PromptOnSecureDesktop", 1, RegistryValueKind.DWord);
+            k.SetValue("EnableInstallerDetection", 1, RegistryValueKind.DWord);
+            k.DeleteValue("FilterAdministratorToken", false);
+            restart = true;
+            return null;
+        });
+
         if (Has("cpu-min-100")) Step("Processor minimum", () =>
         {
             SetPlanValue("54533251-82be-4824-96c1-47b60b740d00", "893dee8e-2bef-41e0-89c6-b55d0929964c", 100);

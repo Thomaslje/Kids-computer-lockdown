@@ -66,6 +66,8 @@ public class MainWindow : Window
         pcButtons.Children.Add(Btn("Push to all", async (_, _) => await PushAsync(_pcs.ToList())));
         pcButtons.Children.Add(Btn("Unlock to desktop", async (_, _) => await RemoteAsync("unlock", "Unlock",
             "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again")));
+        pcButtons.Children.Add(Btn("Create account...", async (_, _) => await CreateAccountAsync()));
+        pcButtons.Children.Add(Btn("Delete account...", async (_, _) => await DeleteAccountAsync()));
         pcButtons.Children.Add(Btn("Restart", async (_, _) => await RemoteAsync("restart", "Restart", "restart in 10 seconds")));
         pcButtons.Children.Add(Btn("Shut down", async (_, _) => await RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds"), "DangerButton"));
         pcButtons.Children.Add(Btn("Add PC...", (_, _) => AddPc()));
@@ -507,6 +509,117 @@ public class MainWindow : Window
         if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return null; }
         tooOld = targets.Where(t => !AgentAtLeast(t.Software, minRev)).ToList();
         return targets.Except(tooOld).ToList();
+    }
+
+    const string AccountRev = "2026-11-06-c";
+
+    async Task CreateAccountAsync()
+    {
+        var send = PickPcs(out var tooOld, AccountRev);
+        if (send == null) return;
+        if (send.Count == 0) { _status.Text = "Those PCs need Update software... first."; return; }
+
+        var nameBox = new TextBox { Margin = new Thickness(0, 2, 0, 0) };
+        var pw1 = new PasswordBox { Margin = new Thickness(0, 2, 0, 0) };
+        var pw2 = new PasswordBox { Margin = new Thickness(0, 2, 0, 0) };
+        var combo = new ComboBox { Margin = new Thickness(0, 2, 0, 0), ItemsSource = AccountGroups.All, DisplayMemberPath = "Name", SelectedIndex = 0 };
+        var desc = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxWidth = 420, Foreground = System.Windows.Media.Brushes.Gray, Text = AccountGroups.All[0].Description };
+        combo.SelectionChanged += (_, _) => { if (combo.SelectedItem is AccountGroup g) desc.Text = g.Description; };
+        var never = new CheckBox { Content = "Password never expires", IsChecked = true, Margin = new Thickness(0, 8, 0, 0) };
+
+        if (!Ui.Ask(this, "Create account",
+            Ui.Label("Create the account on: " + string.Join(", ", send.Select(p => p.Name)) +
+                     "\nIf the account already exists on a PC, its password is changed and it is added to the group."),
+            Ui.Label("Account name"), nameBox,
+            Ui.Label("Password"), pw1,
+            Ui.Label("Password again"), pw2,
+            Ui.Label("Group"), combo, desc, never)) return;
+
+        var name = nameBox.Text.Trim();
+        if (name.Length == 0) { _status.Text = "Create account: no name given."; return; }
+        if (pw1.Password.Length == 0) { _status.Text = "Create account: no password given."; return; }
+        if (pw1.Password != pw2.Password) { _status.Text = "Create account: the two passwords are not the same."; return; }
+        var group = (AccountGroup)combo.SelectedItem;
+        if (group.Sid == "S-1-5-32-544" &&
+            MessageBox.Show(this, $"'{name}' will be a full administrator on {send.Count} PC(s). Continue?", "Administrator",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var json = Json.To(new CreateAccountRequest(name, pw1.Password, group.Sid, never.IsChecked == true));
+        _status.Text = "Creating account...";
+        var results = await Task.WhenAll(send.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "create-account", json, 30000); return (pc.Name, r.Ok, r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (pc.Name, false, ex.Message); }
+        }));
+        int done = results.Count(r => r.Ok);
+        _status.Text = $"Create account: done on {done} of {results.Length} PCs." +
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Item3})")) : "") + TooOldText(tooOld);
+    }
+
+    const string DeleteAccountRev = "2026-11-06-d";
+
+    async Task DeleteAccountAsync()
+    {
+        var send = PickPcs(out var tooOld, DeleteAccountRev);
+        if (send == null) return;
+        if (send.Count == 0) { _status.Text = "Those PCs need Update software... first."; return; }
+
+        _status.Text = "Reading accounts...";
+        var lists = await Task.WhenAll(send.Select(async pc =>
+        {
+            try
+            {
+                var r = await Net.CallAsync(pc.Host, Key, "list-accounts", null, 30000);
+                if (!r.Ok) return (Pc: pc, Accounts: (List<AccountInfo>?)null, Err: r.Error ?? "");
+                return (Pc: pc, Accounts: Json.From<List<AccountInfo>>(r.Data ?? "[]"), Err: "");
+            }
+            catch (Exception ex) { return (Pc: pc, Accounts: (List<AccountInfo>?)null, Err: ex.Message); }
+        }));
+        var unreachable = lists.Where(l => l.Accounts == null).ToList();
+        var skip = new[] { "administrator", "guest", "defaultaccount", "wdagutilityaccount" };
+        var byName = new SortedDictionary<string, List<(PcItem Pc, AccountInfo Info)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in lists.Where(l => l.Accounts != null))
+            foreach (var a in l.Accounts!)
+            {
+                if (skip.Contains(a.Name.ToLowerInvariant())) continue;
+                if (!byName.TryGetValue(a.Name, out var li)) byName[a.Name] = li = new();
+                li.Add((l.Pc, a));
+            }
+        if (byName.Count == 0)
+        {
+            _status.Text = "Delete account: no accounts found." +
+                (unreachable.Count > 0 ? " Could not read: " + string.Join(", ", unreachable.Select(u => $"{u.Pc.Name} ({u.Err})")) : "");
+            return;
+        }
+
+        var list = new ListBox { MinHeight = 160, MaxHeight = 320, MinWidth = 420 };
+        foreach (var kv in byName)
+            list.Items.Add(new ListBoxItem
+            {
+                Tag = kv.Key,
+                Content = kv.Key + "   -   " + string.Join(", ", kv.Value.Select(v => v.Pc.Name + (v.Info.IsAdmin ? " (admin)" : "") + (v.Info.Enabled ? "" : " (disabled)")))
+            });
+        var withFiles = new CheckBox { Content = "Also delete the account's files (profile folder)", IsChecked = true, Margin = new Thickness(0, 8, 0, 0) };
+        if (!Ui.Ask(this, "Delete account",
+            Ui.Label("Pick the account to delete. It is deleted on every selected PC where it exists. Built-in accounts and the Kiosk account are not shown."),
+            list, withFiles)) return;
+        if (list.SelectedItem is not ListBoxItem sel) { _status.Text = "Delete account: nothing selected."; return; }
+        var name = (string)sel.Tag;
+        var targets = byName[name].Select(v => v.Pc).ToList();
+        if (MessageBox.Show(this, $"Delete the account '{name}' on {string.Join(", ", targets.Select(t => t.Name))}?\n\nThis cannot be undone.",
+                "Delete account", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var json = Json.To(new DeleteAccountRequest(name, withFiles.IsChecked == true));
+        _status.Text = "Deleting account...";
+        var results = await Task.WhenAll(targets.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "delete-account", json, 60000); return (pc.Name, r.Ok, r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (pc.Name, false, ex.Message); }
+        }));
+        int done = results.Count(r => r.Ok);
+        _status.Text = $"Delete account: done on {done} of {results.Length} PCs." +
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Item3})")) : "") +
+            (unreachable.Count > 0 ? " Could not read: " + string.Join(", ", unreachable.Select(u => u.Pc.Name)) + "." : "") + TooOldText(tooOld);
     }
 
     string TooOldText(List<PcItem> tooOld) =>
