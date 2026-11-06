@@ -199,6 +199,10 @@ public class MainWindow : Window
         tileButtons.Children.Add(Btn("Remove", (_, _) => RemoveTile(), "DangerButton"));
 
         var titleRow = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
+        var extBtn = Btn("Chrome extensions...", (_, _) => EditChromeExtensions());
+        extBtn.Margin = new Thickness(10, 0, 0, 0);
+        DockPanel.SetDock(extBtn, Dock.Right);
+        titleRow.Children.Add(extBtn);
         var logoBtn = Btn("Logo...", (_, _) => LogoSettings());
         logoBtn.Margin = new Thickness(10, 0, 0, 0);
         DockPanel.SetDock(logoBtn, Dock.Right);
@@ -1327,6 +1331,30 @@ public class MainWindow : Window
         if (b64 == null) { _status.Text = "Could not read that picture."; return; }
         t.ImageBase64 = b64;
         _d.Save();
+    }
+
+    void EditChromeExtensions()
+    {
+        var box = new TextBox
+        {
+            Text = _d.Config.ChromeExtensions ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 120, Width = 520, Margin = new Thickness(0, 6, 0, 6)
+        };
+        if (!Ui.Ask(this, "Chrome extensions",
+                Ui.Label("Chrome extensions that are allowed on the kids' PCs and installed by Chrome itself. One per line. " +
+                         "You can paste the extension's Chrome Web Store address or just its ID (32 letters). Leave empty for none."),
+                box,
+                Ui.Label("Push the setup to apply it. Chrome installs them within a few minutes and the kids cannot remove them. " +
+                         "Windows only lets Chrome install extensions by itself on some PCs (for example joined to a domain). " +
+                         "If it does not install on a PC, the extension is still allowed: use Admin tools > Open on the PC's screen to open Chrome there and add it from the Web Store.")))
+            return;
+
+        var ids = System.Text.RegularExpressions.Regex.Matches(box.Text, "[a-p]{32}").Select(m => m.Value).Distinct().ToList();
+        _d.Config.ChromeExtensions = ids.Count == 0 ? null : string.Join("\n", ids);
+        _d.Save();
+        _status.Text = ids.Count == 0 ? "No Chrome extensions. Push the setup to apply it."
+                                      : $"{ids.Count} Chrome extension(s) saved. Push the setup to apply it.";
     }
 
     void LogoSettings()

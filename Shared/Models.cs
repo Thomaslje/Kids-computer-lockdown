@@ -55,6 +55,8 @@ public class KioskConfig
     /// <summary>Your own logo (PNG, base64). Empty = no logo.</summary>
     public string? LogoBase64 { get; set; }
     public LogoCorner LogoCorner { get; set; } = LogoCorner.BottomRight;
+    /// <summary>Chrome extension IDs (one per line) that are allowed and installed automatically on the kids' PCs.</summary>
+    public string? ChromeExtensions { get; set; }
 }
 
 public record SteamGame(string AppId, string Name);

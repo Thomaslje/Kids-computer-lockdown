@@ -5,6 +5,7 @@ Releases are numbered `build-N` on GitHub. From now on the release notes are mad
 ## Next release - delete login files when a program is closed
 - New "Delete when closed..." button for tiles (programs and Chrome): lists files or folders in the Kiosk account that are deleted when the program has been closed for 45 seconds, and when the kiosk starts. Includes a "Fill in the Roblox login" preset.
 - Only things inside the Kiosk account's own profile can be deleted, and at least two folders deep.
+- New "Chrome extensions..." button on the Kids' screen page: add extensions (Web Store address or ID) that are allowed on the kids' PCs and installed by Chrome itself.
 
 ## Earlier in this release - new look for the admin app
 - Sidebar layout (PCs, Kids' screen, Admin tools, Tweaks, Updates, Passwords and key) with teal and orange colours.
