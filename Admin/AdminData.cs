@@ -7,6 +7,8 @@ namespace KioskAdmin;
 public class PcEntry
 {
     public string Host { get; set; } = "";
+    public string Mac { get; set; } = "";          // learned from the PC, used for Wake-on-LAN
+    public string Broadcast { get; set; } = "";
 }
 
 public class SavedProgram
@@ -64,6 +66,8 @@ public class PcItem : INotifyPropertyChanged
 {
     string _name = "", _status = "Checking...", _version = "", _software = "", _teamViewer = "";
     public string Host { get; set; } = "";
+    public string Mac { get; set; } = "";
+    public string Broadcast { get; set; } = "";
     public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
     public string Status { get => _status; set { _status = value; Raise(nameof(Status)); } }
     public string Software { get => _software; set { _software = value; Raise(nameof(Software)); } }

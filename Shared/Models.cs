@@ -4,6 +4,9 @@ namespace KioskShared;
 
 public enum TileType { Steam, Exe, Chrome }
 
+/// <summary>Where the logo sits on the kids' screen.</summary>
+public enum LogoCorner { BottomRight, BottomLeft, TopRight, TopLeft }
+
 public class Tile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -15,6 +18,8 @@ public class Tile
     public string? ImageBase64 { get; set; }
     /// <summary>Program names (without .exe, comma separated) that are closed before this tile starts. Empty = off.</summary>
     public string? CloseFirst { get; set; }
+    /// <summary>Files or folders (one per line, % variables and * allowed) deleted from the kiosk account when the program has been closed. Empty = off.</summary>
+    public string? DeleteOnClose { get; set; }
 
     public override string ToString() => Type switch
     {
@@ -47,10 +52,15 @@ public class KioskConfig
     public List<ScreenText> Texts { get; set; } = new();
     /// <summary>The PC checks GitHub by itself and updates the kiosk software when it is idle.</summary>
     public bool AutoUpdate { get; set; }
+    /// <summary>Your own logo (PNG, base64). Empty = no logo.</summary>
+    public string? LogoBase64 { get; set; }
+    public LogoCorner LogoCorner { get; set; } = LogoCorner.BottomRight;
+    /// <summary>Chrome extension IDs (one per line) that are allowed and installed automatically on the kids' PCs.</summary>
+    public string? ChromeExtensions { get; set; }
 }
 
 public record SteamGame(string AppId, string Name);
-public record PingInfo(string PcName, int ConfigVersion, string Revision = "", string TeamViewerId = "");
+public record PingInfo(string PcName, int ConfigVersion, string Revision = "", string TeamViewerId = "", string Mac = "", string Broadcast = "");
 /// <summary>Password = null or empty means "leave the account password alone".</summary>
 public record KioskOptions(string? Password, bool BlockCtrlAltDel);
 public record UninstallRequest(bool RemoveAccount);

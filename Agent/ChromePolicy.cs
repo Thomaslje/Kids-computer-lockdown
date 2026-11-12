@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using KioskShared;
 using Microsoft.Win32;
 
 namespace KioskAgent;
@@ -23,6 +25,19 @@ static class ChromePolicy
             SetDword(k, "PasswordManagerEnabled", 0);
             SetDword(k, "BackgroundModeEnabled", 0);         // Chrome really closes when its window is closed
             SetList(k, "ExtensionInstallBlocklist", new[] { "*" });
+
+            // extensions you chose in the admin app: allowed, and Chrome is told to install them by itself
+            var ids = ExtensionIds();
+            if (ids.Count > 0)
+            {
+                SetList(k, "ExtensionInstallAllowlist", ids.ToArray());
+                SetList(k, "ExtensionInstallForcelist", ids.Select(i => i + ";https://clients2.google.com/service/update2/crx").ToArray());
+            }
+            else
+            {
+                k.DeleteSubKeyTree("ExtensionInstallAllowlist", false);
+                k.DeleteSubKeyTree("ExtensionInstallForcelist", false);
+            }
             SetList(k, "URLBlocklist", new[]
             {
                 "file://*", "chrome://settings", "chrome://flags", "chrome://extensions",
@@ -44,12 +59,26 @@ static class ChromePolicy
                   "AllowFileSelectionDialogs", "BrowserSignin", "SyncDisabled", "PasswordManagerEnabled", "BackgroundModeEnabled" })
                 k.DeleteValue(n, false);
             k.DeleteSubKeyTree("ExtensionInstallBlocklist", false);
+            k.DeleteSubKeyTree("ExtensionInstallAllowlist", false);
+            k.DeleteSubKeyTree("ExtensionInstallForcelist", false);
             k.DeleteSubKeyTree("URLBlocklist", false);
             bool empty = k.ValueCount == 0 && k.SubKeyCount == 0;
             k.Close();
             if (empty) Registry.LocalMachine.DeleteSubKey(@"SOFTWARE\Policies\Google\Chrome", false);
         }
         catch { }
+    }
+
+    /// <summary>Valid extension IDs (32 letters a-p) from the saved configuration.</summary>
+    static List<string> ExtensionIds()
+    {
+        try
+        {
+            if (!File.Exists(Paths.ConfigFile)) return new();
+            var text = Json.From<KioskConfig>(File.ReadAllText(Paths.ConfigFile))?.ChromeExtensions ?? "";
+            return Regex.Matches(text, "[a-p]{32}").Select(m => m.Value).Distinct().ToList();
+        }
+        catch { return new(); }
     }
 
     static void SetDword(RegistryKey key, string name, int value) =>

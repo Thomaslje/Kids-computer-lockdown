@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Threading;
 using KioskShared;
@@ -25,21 +26,26 @@ public class MainWindow : Window
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(15) };
     bool _refreshing;
     bool _busy;
+    readonly TextBlock _statOnline = new(), _statOffline = new(), _statOld = new();
+    readonly Border _banner = new();
+    readonly TextBlock _bannerText = new() { FontSize = 14, TextWrapping = TextWrapping.Wrap };
+    ReleaseInfo? _pendingRelease;
 
     byte[] Key => Convert.FromBase64String(_d.KeyBase64);
 
     public MainWindow()
     {
         Title = $"Kiosk Admin   (build {BuildInfo.Revision})";
-        Width = 1000; Height = 640; MinWidth = 800; MinHeight = 500;
+        Width = 1180; Height = 780; MinWidth = 980; MinHeight = 600;
+        Theme.Skin(this);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        foreach (var p in _d.Pcs) _pcs.Add(new PcItem { Host = p.Host, Name = p.Host });
+        foreach (var p in _d.Pcs) _pcs.Add(new PcItem { Host = p.Host, Name = p.Host, Mac = p.Mac, Broadcast = p.Broadcast });
         _pcList.ItemsSource = _pcs;
         var gv = new GridView();
         gv.Columns.Add(new GridViewColumn { Header = "PC", DisplayMemberBinding = new Binding("Name"), Width = 130 });
         gv.Columns.Add(new GridViewColumn { Header = "Address", DisplayMemberBinding = new Binding("Host"), Width = 110 });
-        gv.Columns.Add(new GridViewColumn { Header = "Status", DisplayMemberBinding = new Binding("Status"), Width = 110 });
+        gv.Columns.Add(Theme.StatusColumn(120));
         gv.Columns.Add(new GridViewColumn { Header = "TeamViewer ID", DisplayMemberBinding = new Binding("TeamViewer"), Width = 110 });
         gv.Columns.Add(new GridViewColumn { Header = "Setup v.", DisplayMemberBinding = new Binding("Version"), Width = 60 });
         gv.Columns.Add(new GridViewColumn { Header = "Software", DisplayMemberBinding = new Binding("Software"), Width = 100 });
@@ -54,16 +60,22 @@ public class MainWindow : Window
         _titleBox.Text = _d.Config.Title;
         RefreshTiles();
 
-        // left: PCs
-        var pcButtons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        // PCs view: action buttons
+        var pcButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        pcButtons.Children.Add(Btn("Push to selected", async (_, _) => await PushAsync(_pcList.SelectedItems.Cast<PcItem>().ToList()), "PrimaryButton"));
+        pcButtons.Children.Add(Btn("Push to all", async (_, _) => await PushAsync(_pcs.ToList())));
+        pcButtons.Children.Add(Btn("Unlock to desktop", async (_, _) => await RemoteAsync("unlock", "Unlock",
+            "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again")));
+        pcButtons.Children.Add(Btn("Create account...", async (_, _) => await CreateAccountAsync()));
+        pcButtons.Children.Add(Btn("Delete account...", async (_, _) => await DeleteAccountAsync()));
+        pcButtons.Children.Add(Btn("Wake up all (WOL)", async (_, _) => await WakeAllAsync()));
+        pcButtons.Children.Add(Btn("Restart", async (_, _) => await RemoteAsync("restart", "Restart", "restart in 10 seconds")));
+        pcButtons.Children.Add(Btn("Shut down", async (_, _) => await RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds"), "DangerButton"));
         pcButtons.Children.Add(Btn("Add PC...", (_, _) => AddPc()));
         pcButtons.Children.Add(Btn("Remove", (_, _) => RemovePc()));
         pcButtons.Children.Add(Btn("Check now", async (_, _) => await RefreshAsync()));
-        pcButtons.Children.Add(Btn("Unlock to desktop", async (_, _) => await RemoteAsync("unlock", "Unlock",
-            "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again")));
         pcButtons.Children.Add(Btn("Update software...", async (_, _) => await UpdateSoftwareAsync()));
         pcButtons.Children.Add(Btn("Kiosk options...", async (_, _) => await OptionsAsync()));
-        pcButtons.Children.Add(Btn("Restart", async (_, _) => await RemoteAsync("restart", "Restart", "restart in 10 seconds")));
         var toolsBtn = Btn("Tools \u25BE", (_, _) => { });
         var toolsMenu = new ContextMenu();
         void Item(string text, Func<Task> act)
@@ -79,8 +91,6 @@ public class MainWindow : Window
         toolsBtn.ContextMenu = toolsMenu;
         toolsBtn.Click += (_, _) => { toolsMenu.PlacementTarget = toolsBtn; toolsMenu.IsOpen = true; };
         pcButtons.Children.Add(toolsBtn);
-
-        var adminBtn = Btn("Admin tools \u25BE", (_, _) => { });
         var adminMenu = new ContextMenu();
         var onScreen = new MenuItem { Header = "Open on the PC's screen (as admin)" };
         void Screen(string name, string path, string args = "")
@@ -110,9 +120,8 @@ public class MainWindow : Window
         gh.Click += async (_, _) => await UpdateFromGitHubAsync();
         var ghSet = new MenuItem { Header = "GitHub settings..." };
         ghSet.Click += (_, _) => GitHubSettings();
-        adminMenu.Items.Add(gh); adminMenu.Items.Add(ghSet);
 
-        var updMenu = new MenuItem { Header = "Updates" };
+        var updMenu = new ContextMenu();
         var checkAtStart = new MenuItem { Header = "Check for a new admin app version at start", IsCheckable = true, IsChecked = _d.CheckForUpdates };
         checkAtStart.Click += (_, _) => { _d.CheckForUpdates = checkAtStart.IsChecked; _d.Save(); };
         var autoApp = new MenuItem { Header = "Install admin app updates automatically (no question)", IsCheckable = true, IsChecked = _d.AutoUpdateApp };
@@ -127,81 +136,180 @@ public class MainWindow : Window
         kioskAuto.Click += (_, _) => { _d.Config.AutoUpdate = kioskAuto.IsChecked; _d.Save(); _status.Text = "Saved. Use \"Push to selected PCs\" to send this to the PCs."; };
         var newKey = new MenuItem { Header = "Create update signing key..." };
         newKey.Click += (_, _) => CreateSigningKey();
-        updMenu.Items.Add(checkNow); updMenu.Items.Add(checkAtStart); updMenu.Items.Add(autoApp);
+        updMenu.Items.Add(gh); updMenu.Items.Add(ghSet); updMenu.Items.Add(new Separator()); updMenu.Items.Add(checkNow); updMenu.Items.Add(checkAtStart); updMenu.Items.Add(autoApp);
         updMenu.Items.Add(new Separator()); updMenu.Items.Add(kioskAuto);
         updMenu.Items.Add(new Separator()); updMenu.Items.Add(newKey);
-        adminMenu.Items.Add(updMenu);
         var remote = new MenuItem { Header = "Console, processes, services, programs, screenshot..." };
         remote.Click += (_, _) => OpenRemoteTools();
         adminMenu.Items.Add(remote);
-        adminBtn.ContextMenu = adminMenu;
-        adminBtn.Click += (_, _) => { adminMenu.PlacementTarget = adminBtn; adminMenu.IsOpen = true; };
-        pcButtons.Children.Add(adminBtn);
-        pcButtons.Children.Add(Btn("Tweaks...", async (_, _) => await TweaksAsync()));
-        pcButtons.Children.Add(Btn("Uninstall kiosk...", async (_, _) => await UninstallAsync()));
-        pcButtons.Children.Add(Btn("Shut down", async (_, _) => await RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds")));
-        var left = new DockPanel { Margin = new Thickness(10) };
-        DockPanel.SetDock(pcButtons, Dock.Bottom);
-        left.Children.Add(pcButtons);
-        left.Children.Add(_pcList);
-        var leftBox = new GroupBox { Header = "Kiosk PCs", Content = left, Margin = new Thickness(8) };
 
-        // right: tiles
-        var tileButtons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        tileButtons.Children.Add(Btn("+ Steam game...", async (_, _) => await AddSteamAsync()));
-        tileButtons.Children.Add(Btn("+ Program...", (_, _) => AddProgram()));
-        tileButtons.Children.Add(Btn("+ Chrome", (_, _) => AddChrome()));
+        var uninstallBtn = Btn("Uninstall kiosk...", async (_, _) => await UninstallAsync());
+        pcButtons.Children.Add(uninstallBtn);
+
+        // passwords menu
+        var pwMenu = new ContextMenu();
+        void PwItem(string text, Action act) { var mi = new MenuItem { Header = text }; mi.Click += (_, _) => act(); pwMenu.Items.Add(mi); }
+        PwItem("Friendly password (simple view)...", () => SetFriendlyPassword());
+        PwItem("Start password (admin)...", () => SetStartPassword());
+        PwItem("Exit password (kiosk)...", () => SetPassword());
+        PwItem("Pairing key...", () => ShowKey());
+
+        // PCs view
+        _banner.Visibility = Visibility.Collapsed;
+        _banner.Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#FFF1E3")!;
+        _banner.BorderBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#FFC999")!;
+        _banner.BorderThickness = new Thickness(1.5);
+        _banner.CornerRadius = new CornerRadius(14);
+        _banner.Padding = new Thickness(16, 8, 8, 0);
+        _banner.Margin = new Thickness(0, 0, 0, 14);
+        var bannerRow = new DockPanel();
+        var bannerLater = Btn("Later", (_, _) => _banner.Visibility = Visibility.Collapsed);
+        var bannerGo = Btn("Update now", async (_, _) => { if (_pendingRelease != null) await InstallAppUpdateAsync(_pendingRelease); }, "OrangeButton");
+        DockPanel.SetDock(bannerLater, Dock.Right); DockPanel.SetDock(bannerGo, Dock.Right);
+        bannerRow.Children.Add(bannerLater); bannerRow.Children.Add(bannerGo);
+        _bannerText.VerticalAlignment = VerticalAlignment.Center; _bannerText.Margin = new Thickness(0, 0, 0, 8);
+        bannerRow.Children.Add(_bannerText);
+        _banner.Child = bannerRow;
+
+        var stats = new UniformGrid { Rows = 1, Margin = new Thickness(0, 0, 0, 14) };
+        var s1 = Theme.Stat("PCs online", _statOnline); s1.Margin = new Thickness(0, 0, 14, 0);
+        var s2 = Theme.Stat("Offline", _statOffline); s2.Margin = new Thickness(0, 0, 14, 0);
+        var s3 = Theme.Stat("Not on the newest software", _statOld);
+        stats.Children.Add(s1); stats.Children.Add(s2); stats.Children.Add(s3);
+
+        var listCard = Theme.Card(_pcList);
+        var pcsView = new Grid();
+        pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        pcsView.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(_banner, 0); Grid.SetRow(stats, 1); Grid.SetRow(pcButtons, 2); Grid.SetRow(listCard, 3);
+        pcsView.Children.Add(_banner); pcsView.Children.Add(stats); pcsView.Children.Add(pcButtons); pcsView.Children.Add(listCard);
+
+        // Kids' screen view
+        var tileButtons = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+        tileButtons.Children.Add(Btn("+ Steam game...", async (_, _) => await AddSteamAsync(), "PrimaryButton"));
+        tileButtons.Children.Add(Btn("+ Program...", (_, _) => AddProgram(), "PrimaryButton"));
+        tileButtons.Children.Add(Btn("+ Chrome", (_, _) => AddChrome(), "PrimaryButton"));
         tileButtons.Children.Add(Btn("Rename...", (_, _) => RenameTile()));
         tileButtons.Children.Add(Btn("Close first...", (_, _) => EditCloseFirst()));
+        tileButtons.Children.Add(Btn("Delete when closed...", (_, _) => EditDeleteOnClose()));
         tileButtons.Children.Add(Btn("Change path...", (_, _) => EditPath()));
         tileButtons.Children.Add(Btn("Set image...", (_, _) => SetImage()));
         tileButtons.Children.Add(Btn("Screen text...", (_, _) => EditScreenText()));
         tileButtons.Children.Add(Btn("Up", (_, _) => MoveTile(-1)));
         tileButtons.Children.Add(Btn("Down", (_, _) => MoveTile(1)));
-        tileButtons.Children.Add(Btn("Remove", (_, _) => RemoveTile()));
+        tileButtons.Children.Add(Btn("Remove", (_, _) => RemoveTile(), "DangerButton"));
 
-        var titleRow = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
-        var setPw = Btn("Exit password...", (_, _) => SetPassword());
-        var showKey = Btn("Pairing key...", (_, _) => ShowKey());
-        DockPanel.SetDock(setPw, Dock.Right);
-        DockPanel.SetDock(showKey, Dock.Right);
-        var lockBtn = Btn("Start password...", (_, _) => SetStartPassword());
-        DockPanel.SetDock(lockBtn, Dock.Right);
-        var friendBtn = Btn("Friendly password...", (_, _) => SetFriendlyPassword());
-        DockPanel.SetDock(friendBtn, Dock.Right);
-        titleRow.Children.Add(friendBtn);
-        titleRow.Children.Add(lockBtn);
-        titleRow.Children.Add(setPw);
-        titleRow.Children.Add(showKey);
-        titleRow.Children.Add(new TextBlock { Text = "Title on kiosk screen: ", VerticalAlignment = VerticalAlignment.Center });
+        var titleRow = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
+        var extBtn = Btn("Chrome extensions...", (_, _) => EditChromeExtensions());
+        extBtn.Margin = new Thickness(10, 0, 0, 0);
+        DockPanel.SetDock(extBtn, Dock.Right);
+        titleRow.Children.Add(extBtn);
+        var logoBtn = Btn("Logo...", (_, _) => LogoSettings());
+        logoBtn.Margin = new Thickness(10, 0, 0, 0);
+        DockPanel.SetDock(logoBtn, Dock.Right);
+        titleRow.Children.Add(logoBtn);
+        titleRow.Children.Add(new TextBlock { Text = "Title on the kids' screen:  ", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
         titleRow.Children.Add(_titleBox);
 
-        var right = new DockPanel { Margin = new Thickness(10) };
+        var tilesPanel = new DockPanel { Margin = new Thickness(18) };
+        DockPanel.SetDock(titleRow, Dock.Top);
         DockPanel.SetDock(tileButtons, Dock.Bottom);
-        DockPanel.SetDock(titleRow, Dock.Bottom);
-        right.Children.Add(tileButtons);
-        right.Children.Add(titleRow);
-        right.Children.Add(_tileList);
-        var rightBox = new GroupBox { Header = "What the kids see (in this order)", Content = right, Margin = new Thickness(8) };
+        tilesPanel.Children.Add(titleRow);
+        tilesPanel.Children.Add(tileButtons);
+        tilesPanel.Children.Add(_tileList);
+        var tilesView = new Grid { Visibility = Visibility.Collapsed };
+        tilesView.Children.Add(Theme.Card(tilesPanel));
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
-        Grid.SetColumn(leftBox, 0); Grid.SetColumn(rightBox, 1);
-        grid.Children.Add(leftBox); grid.Children.Add(rightBox);
+        // sidebar
+        var navPcs = Theme.Nav("PCs", Theme.IconMonitor);
+        var navTiles = Theme.Nav("Kids' screen", Theme.IconGrid);
+        var navAdmin = Theme.Nav("Admin tools", Theme.IconTool);
+        var navTweaks = Theme.Nav("Tweaks", Theme.IconZap);
+        var navUpd = Theme.Nav("Updates", Theme.IconRefresh);
+        var navPw = Theme.Nav("Passwords and key", Theme.IconLock);
 
-        // bottom: push
-        var pushSel = Btn("Push to selected PCs", async (_, _) => await PushAsync(_pcList.SelectedItems.Cast<PcItem>().ToList()));
-        var pushAll = Btn("Push to ALL PCs", async (_, _) => await PushAsync(_pcs.ToList()));
-        pushAll.FontWeight = FontWeights.Bold;
-        var bar = new DockPanel { Margin = new Thickness(12, 4, 12, 12) };
-        DockPanel.SetDock(pushAll, Dock.Right);
-        DockPanel.SetDock(pushSel, Dock.Right);
-        bar.Children.Add(pushAll);
-        bar.Children.Add(pushSel);
-        bar.Children.Add(_status);
+        var heading = new TextBlock { FontSize = 26, FontWeight = FontWeights.Bold, Foreground = Theme.Text };
+        var subheading = new TextBlock { FontSize = 14, Foreground = Theme.Muted, Margin = new Thickness(0, 2, 0, 16) };
+        void Show(bool pcs)
+        {
+            pcsView.Visibility = pcs ? Visibility.Visible : Visibility.Collapsed;
+            tilesView.Visibility = pcs ? Visibility.Collapsed : Visibility.Visible;
+            navPcs.Tag = pcs ? "active" : null;
+            navTiles.Tag = pcs ? null : "active";
+            heading.Text = pcs ? "Kids' PCs" : "What the kids see";
+            subheading.Text = pcs ? "Everything you manage, in one place" : "The tiles on the kids' screen, in this order. Use \"Push to selected\" on the PCs page to send changes.";
+        }
+        void Open(System.Windows.Controls.ContextMenu m, UIElement target)
+        {
+            m.PlacementTarget = target;
+            m.Placement = System.Windows.Controls.Primitives.PlacementMode.Right;
+            m.IsOpen = true;
+        }
+        navPcs.Click += (_, _) => Show(true);
+        navTiles.Click += (_, _) => Show(false);
+        navAdmin.Click += (_, _) => Open(adminMenu, navAdmin);
+        navTweaks.Click += async (_, _) => await TweaksAsync();
+        navUpd.Click += (_, _) => Open(updMenu, navUpd);
+        navPw.Click += (_, _) => Open(pwMenu, navPw);
+        Show(true);
+
+        var brandRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4, 0, 24) };
+        try
+        {
+            brandRow.Children.Add(new System.Windows.Controls.Image
+            {
+                Source = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/icon.png")),
+                Width = 40, Height = 40, Margin = new Thickness(0, 0, 12, 0)
+            });
+        }
+        catch { }
+        var brandText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        brandText.Children.Add(new TextBlock { Text = "Kiosk Admin", FontSize = 17, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White });
+        brandText.Children.Add(new TextBlock { Text = "Build " + BuildInfo.ReleaseTag, FontSize = 12, Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#9FD3D3")! });
+        brandRow.Children.Add(brandText);
+
+        var navStack = new StackPanel();
+        foreach (var n in new[] { navPcs, navTiles, navAdmin, navTweaks, navUpd, navPw }) navStack.Children.Add(n);
+
+        var sideBottom = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var secureNote = new TextBlock
+        {
+            Text = "All updates are signature checked.", TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Margin = new Thickness(8, 0, 8, 10),
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#CDEBEB")!
+        };
+        sideBottom.Children.Add(secureNote);
+        if (!string.IsNullOrEmpty(_d.LockHash))
+        {
+            var lockApp = new Button { Content = "Lock app", Style = Theme.Get("NavButton"), HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(0) };
+            lockApp.Click += (_, _) =>
+            {
+                _d.Config.Title = _titleBox.Text; _d.Save();
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true }); } catch { }
+                Application.Current.Shutdown();
+            };
+            sideBottom.Children.Add(lockApp);
+        }
+
+        var side = new DockPanel { Margin = new Thickness(16, 20, 16, 18) };
+        DockPanel.SetDock(brandRow, Dock.Top);
+        DockPanel.SetDock(sideBottom, Dock.Bottom);
+        side.Children.Add(brandRow);
+        side.Children.Add(sideBottom);
+        side.Children.Add(navStack);
+        var sideBorder = new Border
+        {
+            Child = side,
+            Background = new System.Windows.Media.LinearGradientBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#083A3D"),
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0B6163"), 90)
+        };
 
         // status messages disappear on their own (not the "working..." ones, which are replaced by the result)
+        _status.Foreground = Theme.Good;
+        _status.FontWeight = FontWeights.SemiBold;
+        _status.Margin = new Thickness(0, 10, 0, 0);
         var fade = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
         fade.Tick += (_, _) => { fade.Stop(); _status.Text = ""; };
         System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock))
@@ -211,10 +319,24 @@ public class MainWindow : Window
                 if (_status.Text.Length > 0 && !_status.Text.EndsWith("...")) fade.Start();
             });
 
-        var root = new DockPanel();
-        DockPanel.SetDock(bar, Dock.Bottom);
-        root.Children.Add(bar);
-        root.Children.Add(grid);
+        var views = new Grid();
+        views.Children.Add(pcsView);
+        views.Children.Add(tilesView);
+
+        var main = new DockPanel { Margin = new Thickness(28, 24, 28, 18) };
+        var head = new StackPanel();
+        head.Children.Add(heading); head.Children.Add(subheading);
+        DockPanel.SetDock(head, Dock.Top);
+        DockPanel.SetDock(_status, Dock.Bottom);
+        main.Children.Add(head);
+        main.Children.Add(_status);
+        main.Children.Add(views);
+
+        var root = new Grid();
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(sideBorder, 0); Grid.SetColumn(main, 1);
+        root.Children.Add(sideBorder); root.Children.Add(main);
         Content = root;
 
         _timer.Tick += async (_, _) => await RefreshAsync();
@@ -223,11 +345,27 @@ public class MainWindow : Window
         Closing += (_, _) => { _d.Config.Title = _titleBox.Text; _d.Save(); };
     }
 
-    static Button Btn(string text, RoutedEventHandler click)
+    static Button Btn(string text, RoutedEventHandler click, string? style = null)
     {
-        var b = new Button { Content = text, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 6, 4) };
+        var b = new Button { Content = text };
+        if (style != null && Theme.Get(style) is Style st) b.Style = st;
         b.Click += click;
         return b;
+    }
+
+    void UpdateStats()
+    {
+        int online = _pcs.Count(p => p.Status == "Online");
+        _statOnline.Text = $"{online} / {_pcs.Count}";
+        _statOffline.Text = (_pcs.Count - online).ToString();
+        _statOld.Text = _pcs.Count(p => p.Status == "Online" && p.Software != BuildInfo.Revision).ToString();
+    }
+
+    void ShowBanner(ReleaseInfo rel)
+    {
+        _pendingRelease = rel;
+        _bannerText.Text = $"A new version is available: {rel.Tag}.";
+        _banner.Visibility = Visibility.Visible;
     }
 
     // ---------- PCs ----------
@@ -239,6 +377,7 @@ public class MainWindow : Window
         _d.Pcs.Add(new PcEntry { Host = host });
         _pcs.Add(new PcItem { Host = host, Name = host });
         _d.Save();
+        UpdateStats();
         _ = RefreshAsync();
     }
 
@@ -250,6 +389,7 @@ public class MainWindow : Window
             _d.Pcs.RemoveAll(p => p.Host == pc.Host);
         }
         _d.Save();
+        UpdateStats();
     }
 
     async Task RefreshAsync()
@@ -269,6 +409,13 @@ public class MainWindow : Window
                         pc.Name = info.PcName; pc.Status = "Online"; pc.Version = info.ConfigVersion.ToString();
                         pc.Software = string.IsNullOrEmpty(info.Revision) ? "older" : info.Revision;
                         pc.TeamViewer = info.TeamViewerId;
+                        if (!string.IsNullOrEmpty(info.Mac))
+                        {
+                            pc.Mac = info.Mac; pc.Broadcast = info.Broadcast;
+                            var entry = _d.Pcs.FirstOrDefault(e => e.Host == pc.Host);
+                            if (entry != null && (entry.Mac != info.Mac || entry.Broadcast != info.Broadcast))
+                            { entry.Mac = info.Mac; entry.Broadcast = info.Broadcast; _d.Save(); }
+                        }
                     }
                     else pc.Status = r.Error ?? "Error";
                 }
@@ -277,7 +424,7 @@ public class MainWindow : Window
                 catch { pc.Status = "Wrong key / no reply"; }
             }));
         }
-        finally { _refreshing = false; }
+        finally { _refreshing = false; UpdateStats(); }
     }
 
     async Task UninstallAsync()
@@ -370,6 +517,138 @@ public class MainWindow : Window
         if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return null; }
         tooOld = targets.Where(t => !AgentAtLeast(t.Software, minRev)).ToList();
         return targets.Except(tooOld).ToList();
+    }
+
+    const string AccountRev = "2026-11-06-c";
+
+    async Task CreateAccountAsync()
+    {
+        var send = PickPcs(out var tooOld, AccountRev);
+        if (send == null) return;
+        if (send.Count == 0) { _status.Text = "Those PCs need Update software... first."; return; }
+
+        var nameBox = new TextBox { Margin = new Thickness(0, 2, 0, 0) };
+        var pw1 = new PasswordBox { Margin = new Thickness(0, 2, 0, 0) };
+        var pw2 = new PasswordBox { Margin = new Thickness(0, 2, 0, 0) };
+        var combo = new ComboBox { Margin = new Thickness(0, 2, 0, 0), ItemsSource = AccountGroups.All, DisplayMemberPath = "Name", SelectedIndex = 0 };
+        var desc = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxWidth = 420, Foreground = System.Windows.Media.Brushes.Gray, Text = AccountGroups.All[0].Description };
+        combo.SelectionChanged += (_, _) => { if (combo.SelectedItem is AccountGroup g) desc.Text = g.Description; };
+        var never = new CheckBox { Content = "Password never expires", IsChecked = true, Margin = new Thickness(0, 8, 0, 0) };
+
+        if (!Ui.Ask(this, "Create account",
+            Ui.Label("Create the account on: " + string.Join(", ", send.Select(p => p.Name)) +
+                     "\nIf the account already exists on a PC, its password is changed and it is added to the group."),
+            Ui.Label("Account name"), nameBox,
+            Ui.Label("Password"), pw1,
+            Ui.Label("Password again"), pw2,
+            Ui.Label("Group"), combo, desc, never)) return;
+
+        var name = nameBox.Text.Trim();
+        if (name.Length == 0) { _status.Text = "Create account: no name given."; return; }
+        if (pw1.Password.Length == 0) { _status.Text = "Create account: no password given."; return; }
+        if (pw1.Password != pw2.Password) { _status.Text = "Create account: the two passwords are not the same."; return; }
+        var group = (AccountGroup)combo.SelectedItem;
+        if (group.Sid == "S-1-5-32-544" &&
+            MessageBox.Show(this, $"'{name}' will be a full administrator on {send.Count} PC(s). Continue?", "Administrator",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var json = Json.To(new CreateAccountRequest(name, pw1.Password, group.Sid, never.IsChecked == true));
+        _status.Text = "Creating account...";
+        var results = await Task.WhenAll(send.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "create-account", json, 30000); return (Name: pc.Name, Ok: r.Ok, Msg: r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Msg: ex.Message); }
+        }));
+        int done = results.Count(r => r.Ok);
+        _status.Text = $"Create account: done on {done} of {results.Length} PCs." +
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Msg})")) : "") + TooOldText(tooOld);
+    }
+
+    async Task WakeAllAsync()
+    {
+        var all = _pcs.ToList();
+        if (all.Count == 0) { _status.Text = "Wake up: there are no PCs in the list."; return; }
+        var known = all.Where(p => Wol.TryParseMac(p.Mac, out _)).ToList();
+        var unknown = all.Except(known).ToList();
+        if (known.Count == 0)
+        {
+            _status.Text = "Wake up: no network card addresses known yet. Press Check now while the PCs are on (they need software 2026-11-12-a or newer), then Wake up works when they are off.";
+            return;
+        }
+        _status.Text = "Sending wake-up signals...";
+        int sent = 0;
+        foreach (var pc in known) if (await Wol.SendAsync(pc.Mac, pc.Broadcast)) sent++;
+        _status.Text = $"Wake up sent to {sent} of {all.Count} PCs. Checking again in 45 seconds..." +
+            (unknown.Count > 0 ? " No address known yet for: " + string.Join(", ", unknown.Select(p => p.Name)) + "." : "");
+        await Task.Delay(45000);
+        await RefreshAsync();
+        _status.Text = $"Wake up sent to {sent} of {all.Count} PCs." + (unknown.Count > 0 ? " No address known yet for: " + string.Join(", ", unknown.Select(p => p.Name)) + "." : "");
+    }
+
+    const string DeleteAccountRev = "2026-11-06-d";
+
+    async Task DeleteAccountAsync()
+    {
+        var send = PickPcs(out var tooOld, DeleteAccountRev);
+        if (send == null) return;
+        if (send.Count == 0) { _status.Text = "Those PCs need Update software... first."; return; }
+
+        _status.Text = "Reading accounts...";
+        var lists = await Task.WhenAll(send.Select(async pc =>
+        {
+            try
+            {
+                var r = await Net.CallAsync(pc.Host, Key, "list-accounts", null, 30000);
+                if (!r.Ok) return (Pc: pc, Accounts: (List<AccountInfo>?)null, Err: r.Error ?? "");
+                return (Pc: pc, Accounts: Json.From<List<AccountInfo>>(r.Data ?? "[]"), Err: "");
+            }
+            catch (Exception ex) { return (Pc: pc, Accounts: (List<AccountInfo>?)null, Err: ex.Message); }
+        }));
+        var unreachable = lists.Where(l => l.Accounts == null).ToList();
+        var skip = new[] { "administrator", "guest", "defaultaccount", "wdagutilityaccount" };
+        var byName = new SortedDictionary<string, List<(PcItem Pc, AccountInfo Info)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in lists.Where(l => l.Accounts != null))
+            foreach (var a in l.Accounts!)
+            {
+                if (skip.Contains(a.Name.ToLowerInvariant())) continue;
+                if (!byName.TryGetValue(a.Name, out var li)) byName[a.Name] = li = new();
+                li.Add((l.Pc, a));
+            }
+        if (byName.Count == 0)
+        {
+            _status.Text = "Delete account: no accounts found." +
+                (unreachable.Count > 0 ? " Could not read: " + string.Join(", ", unreachable.Select(u => $"{u.Pc.Name} ({u.Err})")) : "");
+            return;
+        }
+
+        var list = new ListBox { MinHeight = 160, MaxHeight = 320, MinWidth = 420 };
+        foreach (var kv in byName)
+            list.Items.Add(new ListBoxItem
+            {
+                Tag = kv.Key,
+                Content = kv.Key + "   -   " + string.Join(", ", kv.Value.Select(v => v.Pc.Name + (v.Info.IsAdmin ? " (admin)" : "") + (v.Info.Enabled ? "" : " (disabled)")))
+            });
+        var withFiles = new CheckBox { Content = "Also delete the account's files (profile folder)", IsChecked = true, Margin = new Thickness(0, 8, 0, 0) };
+        if (!Ui.Ask(this, "Delete account",
+            Ui.Label("Pick the account to delete. It is deleted on every selected PC where it exists. Built-in accounts and the Kiosk account are not shown."),
+            list, withFiles)) return;
+        if (list.SelectedItem is not ListBoxItem sel) { _status.Text = "Delete account: nothing selected."; return; }
+        var name = (string)sel.Tag;
+        var targets = byName[name].Select(v => v.Pc).ToList();
+        if (MessageBox.Show(this, $"Delete the account '{name}' on {string.Join(", ", targets.Select(t => t.Name))}?\n\nThis cannot be undone.",
+                "Delete account", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var json = Json.To(new DeleteAccountRequest(name, withFiles.IsChecked == true));
+        _status.Text = "Deleting account...";
+        var results = await Task.WhenAll(targets.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "delete-account", json, 60000); return (Name: pc.Name, Ok: r.Ok, Msg: r.Ok ? (r.Data ?? "") : (r.Error ?? "")); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Msg: ex.Message); }
+        }));
+        int done = results.Count(r => r.Ok);
+        _status.Text = $"Delete account: done on {done} of {results.Length} PCs." +
+            (done < results.Length ? " Failed: " + string.Join("; ", results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Msg})")) : "") +
+            (unreachable.Count > 0 ? " Could not read: " + string.Join(", ", unreachable.Select(u => u.Pc.Name)) + "." : "") + TooOldText(tooOld);
     }
 
     string TooOldText(List<PcItem> tooOld) =>
@@ -887,9 +1166,17 @@ public class MainWindow : Window
                 choice = win.Choice;
             }
             if (choice == UpdateChoice.Skip) { _d.SkippedTag = rel.Tag; _d.Save(); _status.Text = ""; return; }
-            if (choice != UpdateChoice.Update) { _status.Text = ""; return; }
+            if (choice != UpdateChoice.Update) { _status.Text = ""; ShowBanner(rel); return; }
+            await InstallAppUpdateAsync(rel);
+        }
+        catch (Exception ex) { _status.Text = "Update: " + ex.Message; }
+    }
 
-            _busy = true;
+    async Task InstallAppUpdateAsync(ReleaseInfo rel)
+    {
+        _busy = true;
+        try
+        {
             if (await AppUpdater.UpdateAsync(Http, _d, rel, t => _status.Text = t))
                 Application.Current.Shutdown();
         }
@@ -1068,6 +1355,40 @@ public class MainWindow : Window
 
     const string RobloxNames = "RobloxPlayerBeta, RobloxPlayerLauncher, RobloxCrashHandler";
 
+    const string RobloxLogin = @"%LOCALAPPDATA%\Roblox\LocalStorage\*";
+
+    void EditDeleteOnClose()
+    {
+        var t = SelectedTile();
+        if (t == null) return;
+        if (t.Type == TileType.Steam) { _status.Text = "\"Delete when closed\" works for programs and Chrome, not for Steam games."; return; }
+
+        var box = new TextBox
+        {
+            Text = t.DeleteOnClose ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 110, Width = 520, Margin = new Thickness(0, 6, 0, 6)
+        };
+        var preset = Btn("Fill in the Roblox login", (_, _) =>
+        {
+            if (!box.Text.Contains(RobloxLogin)) box.Text = (box.Text.TrimEnd() + "\r\n" + RobloxLogin).Trim();
+        });
+        preset.HorizontalAlignment = HorizontalAlignment.Left;
+
+        if (!Ui.Ask(this, "Delete when closed: " + t.Name,
+                Ui.Label("Files or folders to delete from the Kiosk account when this program has been closed for a while " +
+                         "(and when the kiosk starts). One per line. You can use % variables like %LOCALAPPDATA% and * in the last part. " +
+                         "Only things inside the Kiosk account's own profile can be deleted. Leave empty to turn this off."),
+                box, preset,
+                Ui.Label("Roblox keeps the saved login in the LocalStorage folder (I believe the file is RobloxCookies.dat). " +
+                         "Test it on one PC first. Log in, close Roblox, wait a minute, then check that the login is gone.")))
+            return;
+        t.DeleteOnClose = string.IsNullOrWhiteSpace(box.Text) ? null : box.Text.Trim();
+        _d.Save();
+        _status.Text = t.DeleteOnClose == null ? "Delete when closed is off for this tile. Push the setup to apply it."
+                                               : "Delete when closed is set. Push the setup to apply it.";
+    }
+
     void EditCloseFirst()
     {
         var t = SelectedTile();
@@ -1152,6 +1473,74 @@ public class MainWindow : Window
         if (b64 == null) { _status.Text = "Could not read that picture."; return; }
         t.ImageBase64 = b64;
         _d.Save();
+    }
+
+    void EditChromeExtensions()
+    {
+        var box = new TextBox
+        {
+            Text = _d.Config.ChromeExtensions ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 120, Width = 520, Margin = new Thickness(0, 6, 0, 6)
+        };
+        if (!Ui.Ask(this, "Chrome extensions",
+                Ui.Label("Chrome extensions that are allowed on the kids' PCs and installed by Chrome itself. One per line. " +
+                         "You can paste the extension's Chrome Web Store address or just its ID (32 letters). Leave empty for none."),
+                box,
+                Ui.Label("Push the setup to apply it. Chrome installs them within a few minutes and the kids cannot remove them. " +
+                         "Windows only lets Chrome install extensions by itself on some PCs (for example joined to a domain). " +
+                         "If it does not install on a PC, the extension is still allowed: use Admin tools > Open on the PC's screen to open Chrome there and add it from the Web Store.")))
+            return;
+
+        var ids = System.Text.RegularExpressions.Regex.Matches(box.Text, "[a-p]{32}").Select(m => m.Value).Distinct().ToList();
+        _d.Config.ChromeExtensions = ids.Count == 0 ? null : string.Join("\n", ids);
+        _d.Save();
+        _status.Text = ids.Count == 0 ? "No Chrome extensions. Push the setup to apply it."
+                                      : $"{ids.Count} Chrome extension(s) saved. Push the setup to apply it.";
+    }
+
+    void LogoSettings()
+    {
+        string? b64 = _d.Config.LogoBase64;
+        var preview = new Image { Height = 90, Stretch = System.Windows.Media.Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 6) };
+        var note = new TextBlock { Foreground = Theme.Muted, Margin = new Thickness(0, 0, 0, 4) };
+        void Refresh()
+        {
+            preview.Source = Ui.FromBase64(b64);
+            note.Text = b64 == null ? "No logo on the kids' screen." : "This logo is shown on the kids' screen.";
+        }
+        Refresh();
+
+        var pick = Btn("Choose a picture...", (_, _) =>
+        {
+            var dlg = new OpenFileDialog { Filter = "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif", Title = "Pick your logo (a PNG with a transparent background looks best)" };
+            if (dlg.ShowDialog(this) != true) return;
+            var conv = Ui.ImageFileToPngBase64(dlg.FileName);
+            if (conv == null) { MessageBox.Show(this, "Could not read that picture.", "Logo"); return; }
+            b64 = conv; Refresh();
+        });
+        var remove = Btn("Remove logo", (_, _) => { b64 = null; Refresh(); }, "DangerButton");
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons.Children.Add(pick); buttons.Children.Add(remove);
+
+        var corners = new (string Text, LogoCorner Value)[]
+        {
+            ("Lower right corner (default)", LogoCorner.BottomRight), ("Lower left corner", LogoCorner.BottomLeft),
+            ("Upper right corner", LogoCorner.TopRight), ("Upper left corner", LogoCorner.TopLeft)
+        };
+        var radios = corners.Select(c => new RadioButton
+        {
+            Content = c.Text, GroupName = "logoCorner", Margin = new Thickness(0, 3, 0, 3), IsChecked = _d.Config.LogoCorner == c.Value
+        }).ToList();
+
+        if (!Ui.Ask(this, "Logo on the kids' screen",
+                Ui.Label("Pick a logo and where it sits on the screen."), note, preview, buttons,
+                Ui.Label("Place it in:"), radios[0], radios[1], radios[2], radios[3])) return;
+
+        _d.Config.LogoBase64 = b64;
+        _d.Config.LogoCorner = corners[Math.Max(0, radios.FindIndex(r => r.IsChecked == true))].Value;
+        _d.Save();
+        _status.Text = "Logo saved. Use \"Push to selected\" on the PCs page to send it to the kids' PCs.";
     }
 
     void MoveTile(int delta)

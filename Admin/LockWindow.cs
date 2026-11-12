@@ -18,6 +18,7 @@ public class LockWindow : Window
     public LockWindow(string adminHash, string? userHash)
     {
         Title = "Kiosk Admin";
+        Theme.Skin(this);
         SizeToContent = SizeToContent.WidthAndHeight; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Topmost = true;
 

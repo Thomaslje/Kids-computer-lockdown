@@ -7,10 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "Shared\Shared.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Agent", "Agent\Agent.csproj", "{7BAC14D1-1560-4A09-8034-CBA2AF82F65D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Launcher", "Launcher\Launcher.csproj", "{A4B22415-5191-48E1-8973-15B25CBF9339}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Admin", "Admin\Admin.csproj", "{900EA107-7AED-4401-9CC2-0006BD36928C}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -28,13 +24,5 @@ Global
 		{7BAC14D1-1560-4A09-8034-CBA2AF82F65D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7BAC14D1-1560-4A09-8034-CBA2AF82F65D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7BAC14D1-1560-4A09-8034-CBA2AF82F65D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A4B22415-5191-48E1-8973-15B25CBF9339}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A4B22415-5191-48E1-8973-15B25CBF9339}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A4B22415-5191-48E1-8973-15B25CBF9339}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A4B22415-5191-48E1-8973-15B25CBF9339}.Release|Any CPU.Build.0 = Release|Any CPU
-		{900EA107-7AED-4401-9CC2-0006BD36928C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{900EA107-7AED-4401-9CC2-0006BD36928C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{900EA107-7AED-4401-9CC2-0006BD36928C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{900EA107-7AED-4401-9CC2-0006BD36928C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

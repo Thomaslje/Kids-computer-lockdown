@@ -7,6 +7,7 @@ public static class Program
     {
         var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
 
+        Theme.Apply(app);
         GitHubUpdate.CleanupOld();
         var data = AdminData.Load();
         var role = LockRole.Admin;

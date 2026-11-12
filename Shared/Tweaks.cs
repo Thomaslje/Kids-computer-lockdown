@@ -16,6 +16,7 @@ public static class TweakCatalog
         new("usb-suspend-off", "Turn off USB selective suspend", "Stops USB mice, keyboards and gamepads from dropping out.", true),
         new("nic-wol", "Turn on Wake-on-LAN on the network card", "If the card supports it. Needed for waking a PC remotely.", false),
         new("wake-timers-off", "Disable wake timers", "The PC never wakes itself up for scheduled tasks.", false),
+        new("uac-default", "Turn User Account Control (UAC) on, default settings", "Restores the normal admin prompt for all accounts. Takes effect after a restart.", false),
         new("cpu-min-100", "Processor minimum speed 100%", "No clocking down. Uses more power and runs warmer; not for laptops.", false),
     };
 

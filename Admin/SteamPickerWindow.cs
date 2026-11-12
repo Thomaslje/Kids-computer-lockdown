@@ -21,6 +21,7 @@ public class SteamPickerWindow : Window
         _key = key;
         Owner = owner;
         Title = "Add Steam games";
+        Theme.Skin(this);
         Width = 520; SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;

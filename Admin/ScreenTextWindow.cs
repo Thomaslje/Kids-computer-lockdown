@@ -62,6 +62,7 @@ public class ScreenTextWindow : Window
         _tileCount = tileCount;
         Owner = owner;
         Title = "Screen text";
+        Theme.Skin(this);
         SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
