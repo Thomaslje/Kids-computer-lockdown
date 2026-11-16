@@ -39,6 +39,7 @@ public class AdminData
     public bool WizardDone { get; set; }             // the first-start setup wizard has been run (or skipped)
     public string JoinSalt { get; set; } = "";       // joining password: only the salt and derived key are kept, not the password
     public string JoinKey { get; set; } = "";
+    public string DefaultAdminName { get; set; } = "";  // name of the administrator account from the setup wizard (its password is not stored)
     public bool OptBlockCtrlAltDel { get; set; }   // the password is deliberately NOT stored here
 
     static string FilePath => Path.Combine(

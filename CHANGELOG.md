@@ -9,6 +9,7 @@ Releases are numbered `build-N` on GitHub. From now on the release notes are mad
 - The Setup wizard and "Join PCs of another admin app" moved to their own Setup menu (far right of the tab strip), out of the passwords. The pairing key is under Security.
 - The Setup wizard has a new look: numbered steps along the top and a white card, with an orange Next button.
 - The admin app no longer closes silently on an error: it shows a message, keeps running, and writes the details to %LOCALAPPDATA%\\KioskAdmin\\crash.log.
+- Adding a new PC now asks "Apply your saved defaults to this PC?". Yes sends what the wizard set (exit password, tiles and heading, Ctrl+Alt+Del setting, tweaks, joining password) and asks once for the Kiosk account password and the administrator account password, because those two are never stored. The same thing is available any time as Home > Apply defaults, or Setup > Apply my defaults to selected PCs.
 - Nothing changes on the PCs: no new software version is needed.
 
 ## Next release - joining password and setup wizard

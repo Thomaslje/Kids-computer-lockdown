@@ -161,7 +161,7 @@ public class MainWindow : Window
         var builders = new Dictionary<string, Func<UIElement>>
         {
             ["Home"] = () => Ribbon.Row(
-                Ribbon.Group("Kiosk setup", RB(Ribbon.Send, "Push to selected", Go(() => PushAsync(Sel())), Ribbon.Kind.Primary), RB(Ribbon.Send, "Push to all", Go(() => PushAsync(_pcs.ToList())))),
+                Ribbon.Group("Kiosk setup", RB(Ribbon.Send, "Push to selected", Go(() => PushAsync(Sel())), Ribbon.Kind.Primary), RB(Ribbon.Send, "Push to all", Go(() => PushAsync(_pcs.ToList()))), RB(Ribbon.Check, "Apply defaults", Go(() => ApplyDefaultsAsync(Sel())))),
                 Ribbon.Group("Remote control",
                     RB(Ribbon.Unlock, "Unlock to desktop", Go(() => RemoteAsync("unlock", "Unlock", "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again"))),
                     RB(Ribbon.Sync, "Restart", Go(() => RemoteAsync("restart", "Restart", "restart in 10 seconds"))),
@@ -223,7 +223,9 @@ public class MainWindow : Window
         miWizard.Click += async (_, _) => await RunWizardAsync();
         var miJoin = new MenuItem { Header = "Join PCs of another admin app..." };
         miJoin.Click += async (_, _) => await JoinExistingAsync();
-        setupMenu.Items.Add(miWizard); setupMenu.Items.Add(miJoin);
+        var miApply = new MenuItem { Header = "Apply my defaults to selected PCs..." };
+        miApply.Click += async (_, _) => await ApplyDefaultsAsync(Sel());
+        setupMenu.Items.Add(miWizard); setupMenu.Items.Add(miApply); setupMenu.Items.Add(new Separator()); setupMenu.Items.Add(miJoin);
         Border? setupTab = null;
         setupTab = Ribbon.Tab("Setup \u25BE", true, () => { setupMenu.PlacementTarget = setupTab; setupMenu.Placement = PlacementMode.Bottom; setupMenu.IsOpen = true; });
         DockPanel.SetDock(setupTab, Dock.Right);
@@ -345,7 +347,47 @@ public class MainWindow : Window
     async Task AfterAddAsync(PcItem pc)
     {
         await RefreshAsync();
-        if (_d.JoinKey.Length > 0 && pc.Status == "Online") await PushJoinAsync(new List<PcItem> { pc }, false);   // new PCs get the joining password too
+        if (pc.Status != "Online")
+        {
+            _status.Text = $"{pc.Name} was added but is not online yet. When it is: Setup > Apply my defaults to selected PCs.";
+            return;
+        }
+        if (MessageBox.Show(this,
+                $"Apply your saved defaults to {pc.Name} now?\n\nThis sends the exit password, the kids' screen tiles and heading, the Ctrl+Alt+Del setting, your ticked tweaks and the joining password, " +
+                "and creates the administrator account if you set one in the wizard.",
+                "New PC", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            await ApplyDefaultsAsync(new List<PcItem> { pc });
+        else if (_d.JoinKey.Length > 0)
+            await PushJoinAsync(new List<PcItem> { pc }, false);   // new PCs get the joining password anyway
+    }
+
+    /// <summary>Like running the wizard again, in one step: sends everything the admin app has saved as defaults to the given PCs.</summary>
+    async Task ApplyDefaultsAsync(List<PcItem> pcs)
+    {
+        if (pcs.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return; }
+        var kiosk = new PasswordBox { Margin = new Thickness(0, 4, 0, 4) };
+        var admin = new PasswordBox { Margin = new Thickness(0, 4, 0, 4) };
+        var fields = new List<UIElement>
+        {
+            Ui.Label("Apply your saved defaults to: " + string.Join(", ", pcs.Select(p => p.Name))),
+            Ui.Label("Sent as saved: exit password, tiles and heading, Ctrl+Alt+Del setting, tweaks and joining password. The two account passwords below are not stored, so type them again (leave empty to skip that one)."),
+            Ui.Label("Kiosk account password (empty = keep the current one)"), kiosk
+        };
+        if (_d.DefaultAdminName.Length > 0)
+        {
+            fields.Add(Ui.Label($"Password for the administrator account \"{_d.DefaultAdminName}\" (empty = do not create it)"));
+            fields.Add(admin);
+        }
+        if (!Ui.Ask(this, "Apply my defaults", fields.ToArray())) return;
+        var r = new WizardResult
+        {
+            KioskPassword = kiosk.Password,
+            BlockCtrlAltDel = _d.OptBlockCtrlAltDel,
+            Tweaks = _d.Tweaks ?? new List<string>(),
+            AdminName = admin.Password.Length > 0 ? _d.DefaultAdminName : "",
+            AdminPassword = admin.Password
+        };
+        await ApplyWizardAsync(r, pcs);
     }
 
     void RemovePc()
@@ -588,6 +630,7 @@ public class MainWindow : Window
         _d.Config.ExitPasswordHash = Passwords.Hash(r.ExitPassword);
         _d.OptBlockCtrlAltDel = r.BlockCtrlAltDel;
         _d.Tweaks = r.Tweaks;
+        if (r.AdminName.Length > 0) _d.DefaultAdminName = r.AdminName;
         if (r.StartPassword.Length > 0)
         {
             _d.LockHash = Passwords.Hash(r.StartPassword);
@@ -602,12 +645,11 @@ public class MainWindow : Window
         _d.Save();
         UpdateStats();
         await RefreshAsync();
-        await ApplyWizardAsync(r);
+        await ApplyWizardAsync(r, _pcs.ToList());
     }
 
-    async Task ApplyWizardAsync(WizardResult r)
+    async Task ApplyWizardAsync(WizardResult r, List<PcItem> pcs)
     {
-        var pcs = _pcs.ToList();
         if (pcs.Count == 0) return;
         _status.Text = $"Applying your defaults to {pcs.Count} PC(s)...";
 
