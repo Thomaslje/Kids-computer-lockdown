@@ -6,6 +6,7 @@ Releases are numbered `build-N` on GitHub. From now on the release notes are mad
 
 - New joining password: PCs that have one only hand out their pairing key to an admin app that knows it (wrong guesses lock joining for 10 minutes). Set it from Passwords and key > Joining password... (sent to all PCs; new PCs you add get it too). A second admin app uses Passwords and key > Join PCs of another admin app... instead of copying the long pairing key.
 - New setup wizard that starts the first time the admin app opens (also Passwords and key > Setup wizard...): your PCs, exit password, Kiosk account password (automatic login is kept), an administrator account, joining password and the tweaks. Finish sends everything to all PCs and lists the ones that need attention. A "join an existing setup" path is included.
+- The wizard also sets the start password and the simple password of the admin app itself.
 - The kids' PCs now lock the exit-password prompt after 3 wrong tries (1, 2, 4, 8, then 15 minutes).
 - New "Joining pw" column in the PC list shows whether each PC has the joining password. The wizard also asks for the kids' screen heading.
 - Needs software 2026-11-16-a on the PCs for the joining password and the lockout.

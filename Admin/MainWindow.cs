@@ -632,6 +632,11 @@ public class MainWindow : Window
         _d.Config.ExitPasswordHash = Passwords.Hash(r.ExitPassword);
         _d.OptBlockCtrlAltDel = r.BlockCtrlAltDel;
         _d.Tweaks = r.Tweaks;
+        if (r.StartPassword.Length > 0)
+        {
+            _d.LockHash = Passwords.Hash(r.StartPassword);
+            _d.UserLockHash = r.FriendlyPassword.Length > 0 ? Passwords.Hash(r.FriendlyPassword) : null;
+        }
         if (r.Title.Length > 0) { _d.Config.Title = r.Title; _titleBox.Text = r.Title; }
         if (r.JoinPassword.Length > 0)
         {

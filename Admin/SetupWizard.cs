@@ -13,6 +13,7 @@ public sealed class WizardResult
     public bool BlockCtrlAltDel;
     public List<string> Tweaks = new();
     public string Title = "";
+    public string StartPassword = "", FriendlyPassword = "";
     public string? JoinedKeyB64;     // join mode: the pairing key fetched from a PC
 }
 
@@ -40,7 +41,7 @@ public sealed class SetupWizard : Window
     readonly RadioButton _modeJoin = new() { Content = "My PCs already work with another admin app: join them (needs their joining password)", Margin = new Thickness(0, 4, 0, 4) };
     readonly TextBox _hostsJoin = new() { AcceptsReturn = true, MinHeight = 90, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 2, 0, 4) };
     readonly TextBox _hosts = new() { AcceptsReturn = true, MinHeight = 90, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    readonly PasswordBox _exit1 = new(), _exit2 = new(), _kiosk1 = new(), _kiosk2 = new(), _adminPw1 = new(), _adminPw2 = new(), _join1 = new(), _join2 = new(), _joinOld = new();
+    readonly PasswordBox _start1 = new(), _start2 = new(), _friend1 = new(), _friend2 = new(), _exit1 = new(), _exit2 = new(), _kiosk1 = new(), _kiosk2 = new(), _adminPw1 = new(), _adminPw2 = new(), _join1 = new(), _join2 = new(), _joinOld = new();
     readonly CheckBox _blockCad = new() { Content = "Block Ctrl+Alt+Del on the kids' PCs (also disables the Delete key there)", Margin = new Thickness(0, 10, 0, 0) };
     readonly TextBox _adminName = new();
     readonly TextBox _screenTitle = new();
@@ -57,7 +58,7 @@ public sealed class SetupWizard : Window
         Theme.Skin(this);
         if (Theme.Get("PrimaryButton") is Style ps) _next.Style = ps;
 
-        foreach (var c in new Control[] { _exit1, _exit2, _kiosk1, _kiosk2, _adminPw1, _adminPw2, _join1, _join2, _joinOld, _adminName, _hosts, _screenTitle })
+        foreach (var c in new Control[] { _exit1, _exit2, _kiosk1, _kiosk2, _adminPw1, _adminPw2, _join1, _join2, _joinOld, _start1, _start2, _friend1, _friend2, _adminName, _hosts, _screenTitle })
             c.Margin = new Thickness(0, 2, 0, 4);
         _blockCad.IsChecked = data.OptBlockCtrlAltDel;
         _screenTitle.Text = data.Config.Title;
@@ -143,7 +144,24 @@ public sealed class SetupWizard : Window
                 return null;
             }));
 
-        // 5: tweaks
+        // 5: passwords for this admin app
+        _newPages.Add(new Page("Admin app passwords",
+            "The start password is asked for every time this admin app opens (the full app). The simple password opens a simple view with only the PC list, Restart and Shut down, handy for someone you do not want to give full control. Leave both empty to skip; the simple password needs a start password.",
+            Stack(Ui.Label("Start password (full admin)"), _start1, Ui.Label("Repeat the start password"), _start2,
+                  Ui.Label("Simple password (simple view, optional)"), _friend1, Ui.Label("Repeat the simple password"), _friend2),
+            () =>
+            {
+                if (_start1.Password.Length == 0 && _start2.Password.Length == 0 && _friend1.Password.Length == 0 && _friend2.Password.Length == 0) return null;
+                if (_start1.Password.Length < 4) return "The start password must be at least 4 characters.";
+                if (_start1.Password != _start2.Password) return "The two start passwords are not the same.";
+                if (_friend1.Password.Length == 0 && _friend2.Password.Length == 0) return null;
+                if (_friend1.Password.Length < 4) return "The simple password must be at least 4 characters.";
+                if (_friend1.Password != _friend2.Password) return "The two simple passwords are not the same.";
+                if (_friend1.Password == _start1.Password) return "The simple password must be different from the start password.";
+                return null;
+            }));
+
+        // 6: tweaks
         var ticked = data.Tweaks ?? TweakCatalog.Defaults;
         var tweakPanel = new StackPanel();
         foreach (var t in TweakCatalog.All)
@@ -167,12 +185,12 @@ public sealed class SetupWizard : Window
         _newPages.Add(new Page("Tweaks", "Tick the Windows tweaks every PC should get. These are the same ones as in the Tweaks menu.",
             new ScrollViewer { Content = tweakPanel, MaxHeight = 330, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, () => null));
 
-        // 6: kids' screen
+        // 7: kids' screen
         _newPages.Add(new Page("Kids' screen",
             "The heading shown at the top of the kids' screen. Tiles (Steam games, programs, Chrome) are added later under Kids' screen; any tiles you have already made are sent along with everything else.",
             Stack(Ui.Label("Heading"), _screenTitle), () => null));
 
-        // 7: summary
+        // 8: summary
         _newPages.Add(new Page("Ready", "Press Finish to send everything to the PCs. PCs that are off or have old software are listed afterwards; you can run the wizard again for them.",
             Stack(_summary), () => null));
     }
@@ -238,6 +256,7 @@ public sealed class SetupWizard : Window
             _blockCad.IsChecked == true ? "Ctrl+Alt+Del: blocked" : "Ctrl+Alt+Del: not blocked",
             _adminName.Text.Trim().Length > 0 ? $"Administrator account: {_adminName.Text.Trim()}" : "Administrator account: none",
             _join1.Password.Length > 0 ? "Joining password: set" : "Joining password: not set",
+            _start1.Password.Length > 0 ? (_friend1.Password.Length > 0 ? "Admin app: start password and simple password set" : "Admin app: start password set") : "Admin app: no start password change",
             $"Tweaks: {_tweakBoxes.Count(t => t.Box.IsChecked == true)} ticked",
             _screenTitle.Text.Trim().Length > 0 ? $"Kids' screen heading: {_screenTitle.Text.Trim()}" : "Kids' screen heading: unchanged"
         };
@@ -258,6 +277,7 @@ public sealed class SetupWizard : Window
             Result.ExitPassword = _exit1.Password; Result.KioskPassword = _kiosk1.Password; Result.BlockCtrlAltDel = _blockCad.IsChecked == true;
             Result.AdminName = _adminName.Text.Trim(); Result.AdminPassword = _adminPw1.Password;
             Result.JoinPassword = _join1.Password;
+            Result.StartPassword = _start1.Password; Result.FriendlyPassword = _friend1.Password;
             Result.Title = _screenTitle.Text.Trim();
             Result.Tweaks = _tweakBoxes.Where(t => t.Box.IsChecked == true).Select(t => t.Info.Id).ToList();
         }
