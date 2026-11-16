@@ -2,6 +2,14 @@
 
 Releases are numbered `build-N` on GitHub. From now on the release notes are made automatically from the commit messages; this file records what the suite gained before that.
 
+## Next release - ribbon redesign
+
+- The admin app now has a Word-style ribbon with tabs along the top instead of the sidebar: Home, Kids' screen, Accounts, Tools, Remote admin, Tweaks, Updates and Security. Each tab shows round-icon buttons in groups. The PC list stays underneath with the stats and a bar showing which PCs are selected.
+- Remote admin is its own tab (CMD, PowerShell, Task Manager, Registry, Device Manager, Event Viewer, Services, More... and the one-PC console windows).
+- The Setup wizard and "Join PCs of another admin app" moved to their own Setup menu (far right of the tab strip), out of the passwords. The pairing key is under Security.
+- The Setup wizard has a new look: numbered steps along the top and a white card, with an orange Next button.
+- Nothing changes on the PCs: no new software version is needed.
+
 ## Next release - joining password and setup wizard
 
 - New joining password: PCs that have one only hand out their pairing key to an admin app that knows it (wrong guesses lock joining for 10 minutes). Set it from Passwords and key > Joining password... (sent to all PCs; new PCs you add get it too). A second admin app uses Passwords and key > Join PCs of another admin app... instead of copying the long pairing key.

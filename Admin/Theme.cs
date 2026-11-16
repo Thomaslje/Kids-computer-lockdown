@@ -17,7 +17,7 @@ public static class Theme
         return b;
     }
 
-    public static readonly Brush Bg = Br("#EEF6F6");
+    public static readonly Brush Bg = Br("#EAF2F3");
     public static readonly Brush Text = Br("#0F2A2E");
     public static readonly Brush Muted = Br("#4F6B6F");
     public static readonly Brush Line = Br("#D6E7E7");

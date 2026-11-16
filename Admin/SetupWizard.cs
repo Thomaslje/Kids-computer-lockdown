@@ -35,6 +35,7 @@ public sealed class SetupWizard : Window
     readonly Button _next = new() { Content = "Next", Width = 150, IsDefault = true };
     readonly Button _cancel = new() { Content = "Skip wizard", Width = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
     int _index;
+    readonly StackPanel _stepper = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
 
     // fields
     readonly RadioButton _modeNew = new() { Content = "Set up my PCs now (first time, or PCs that have no admin app yet)", IsChecked = true, Margin = new Thickness(0, 4, 0, 4) };
@@ -53,10 +54,10 @@ public sealed class SetupWizard : Window
     public SetupWizard(Window owner, AdminData data)
     {
         Title = "Kiosk Admin setup";
-        Owner = owner; SizeToContent = SizeToContent.Height; Width = 640; ResizeMode = ResizeMode.NoResize;
+        Owner = owner; SizeToContent = SizeToContent.Height; Width = 780; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
         Theme.Skin(this);
-        if (Theme.Get("PrimaryButton") is Style ps) _next.Style = ps;
+        if (Theme.Get("OrangeButton") is Style ps) _next.Style = ps;
 
         foreach (var c in new Control[] { _exit1, _exit2, _kiosk1, _kiosk2, _adminPw1, _adminPw2, _join1, _join2, _joinOld, _start1, _start2, _friend1, _friend2, _adminName, _hosts, _screenTitle })
             c.Margin = new Thickness(0, 2, 0, 4);
@@ -70,9 +71,16 @@ public sealed class SetupWizard : Window
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         buttons.Children.Add(_cancel); buttons.Children.Add(_back); buttons.Children.Add(_next);
+        var card = new StackPanel();
+        card.Children.Add(_title); card.Children.Add(_help);
+        card.Children.Add(_body); card.Children.Add(_error);
         var root = new StackPanel { Margin = new Thickness(24) };
-        root.Children.Add(_step); root.Children.Add(_title); root.Children.Add(_help);
-        root.Children.Add(_body); root.Children.Add(_error); root.Children.Add(buttons);
+        _stepper.Margin = new Thickness(6, 0, 6, 16);
+        root.Children.Add(_stepper);
+        root.Children.Add(Theme.Card(card, new Thickness(30, 24, 30, 26)));
+        _step.HorizontalAlignment = HorizontalAlignment.Center; _step.Margin = new Thickness(0, 12, 0, 0);
+        root.Children.Add(_step);
+        root.Children.Add(buttons);
         Content = root;
 
         _back.Click += (_, _) => { _error.Text = ""; GoTo(_index - 1); };
@@ -92,7 +100,7 @@ public sealed class SetupWizard : Window
     {
         // 0: welcome
         _newPages.Add(new Page("Welcome", "This wizard sets the defaults for your kids' PCs and, when you press Finish, sends them to every PC in your list. " +
-            "You can run it again later from Passwords and key > Setup wizard.", Stack(_modeNew, _modeJoin), () => null));
+            "You can run it again later from Setup > Setup wizard.", Stack(_modeNew, _modeJoin), () => null));
 
         // 1: PCs (setup mode) / join (join mode)
         _newPages.Add(new Page("Your PCs", "Type the name or IP address of every kids' PC, one per line. The kiosk software must already be installed on them (KioskSetup.exe with this admin app's pairing key).",
@@ -182,7 +190,7 @@ public sealed class SetupWizard : Window
             _tweakBoxes.Add((t, cb));
             tweakPanel.Children.Add(cb);
         }
-        _newPages.Add(new Page("Tweaks", "Tick the Windows tweaks every PC should get. These are the same ones as in the Tweaks menu.",
+        _newPages.Add(new Page("Tweaks", "Tick the Windows tweaks every PC should get. These are the same ones as on the Tweaks tab.",
             new ScrollViewer { Content = tweakPanel, MaxHeight = 330, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, () => null));
 
         // 7: kids' screen
@@ -238,10 +246,38 @@ public sealed class SetupWizard : Window
         _index = Math.Clamp(index, 0, _pages.Count - 1);
         var p = _pages[_index];
         _step.Text = $"Step {_index + 1} of {_pages.Count}";
+        BuildStepper();
         _title.Text = p.Title; _help.Text = p.Help; _body.Content = p.Body;
         _back.IsEnabled = _index > 0;
         _next.Content = _index == _pages.Count - 1 ? "Finish" : "Next";
         if (p.Title == "Ready") _summary.Text = BuildSummary();
+    }
+
+    void BuildStepper()
+    {
+        _stepper.Children.Clear();
+        var teal = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0B7F80")!;
+        var orange = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#FF7A1A")!;
+        var soft = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#E4F2F2")!;
+        var line = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#CFDFE0")!;
+        for (int i = 0; i < _pages.Count; i++)
+        {
+            bool done = i < _index, cur = i == _index;
+            var dot = new Border
+            {
+                Width = 30, Height = 30, CornerRadius = new CornerRadius(15), ToolTip = _pages[i].Title,
+                Background = cur ? orange : done ? teal : soft,
+                Child = new TextBlock
+                {
+                    Text = done ? "\u2713" : (i + 1).ToString(), FontWeight = FontWeights.Bold, FontSize = 13,
+                    Foreground = cur || done ? System.Windows.Media.Brushes.White : Theme.Muted,
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+            _stepper.Children.Add(dot);
+            if (i < _pages.Count - 1)
+                _stepper.Children.Add(new Border { Width = 34, Height = 2, Background = done ? teal : line, Margin = new Thickness(4, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
+        }
     }
 
     string BuildSummary()

@@ -36,7 +36,7 @@ public class MainWindow : Window
     public MainWindow()
     {
         Title = $"Kiosk Admin   (build {BuildInfo.Revision})";
-        Width = 1180; Height = 780; MinWidth = 980; MinHeight = 600;
+        Width = 1320; Height = 820; MinWidth = 1100; MinHeight = 640;
         Theme.Skin(this);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
@@ -61,112 +61,14 @@ public class MainWindow : Window
         _titleBox.Text = _d.Config.Title;
         RefreshTiles();
 
-        // PCs view: action buttons
-        var pcButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
-        pcButtons.Children.Add(Btn("Push to selected", async (_, _) => await PushAsync(_pcList.SelectedItems.Cast<PcItem>().ToList()), "PrimaryButton"));
-        pcButtons.Children.Add(Btn("Push to all", async (_, _) => await PushAsync(_pcs.ToList())));
-        pcButtons.Children.Add(Btn("Unlock to desktop", async (_, _) => await RemoteAsync("unlock", "Unlock",
-            "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again")));
-        pcButtons.Children.Add(Btn("Create account...", async (_, _) => await CreateAccountAsync()));
-        pcButtons.Children.Add(Btn("Delete account...", async (_, _) => await DeleteAccountAsync()));
-        pcButtons.Children.Add(Btn("Wake up all (WOL)", async (_, _) => await WakeAllAsync()));
-        pcButtons.Children.Add(Btn("Restart", async (_, _) => await RemoteAsync("restart", "Restart", "restart in 10 seconds")));
-        pcButtons.Children.Add(Btn("Shut down", async (_, _) => await RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds"), "DangerButton"));
-        pcButtons.Children.Add(Btn("Add PC...", (_, _) => AddPc()));
-        pcButtons.Children.Add(Btn("Remove", (_, _) => RemovePc()));
-        pcButtons.Children.Add(Btn("Check now", async (_, _) => await RefreshAsync()));
-        pcButtons.Children.Add(Btn("Update software...", async (_, _) => await UpdateSoftwareAsync()));
-        pcButtons.Children.Add(Btn("Kiosk options...", async (_, _) => await OptionsAsync()));
-        var toolsBtn = Btn("Tools \u25BE", (_, _) => { });
-        var toolsMenu = new ContextMenu();
-        void Item(string text, Func<Task> act)
-        {
-            var mi = new MenuItem { Header = text };
-            mi.Click += async (_, _) => await act();
-            toolsMenu.Items.Add(mi);
-        }
-        Item("Create the Share folder (no password)...", ShareSetupAsync);
-        Item("Send a file to the PCs...", SendFileAsync);
-        Item("Install a program silently...", InstallProgramAsync);
-        Item("Start a program on the kiosk PCs...", StartProgramAsync);
-        toolsBtn.ContextMenu = toolsMenu;
-        toolsBtn.Click += (_, _) => { toolsMenu.PlacementTarget = toolsBtn; toolsMenu.IsOpen = true; };
-        pcButtons.Children.Add(toolsBtn);
-        var adminMenu = new ContextMenu();
-        var onScreen = new MenuItem { Header = "Open on the PC's screen (as admin)" };
-        void Screen(string name, string path, string args = "")
-        {
-            var mi = new MenuItem { Header = name };
-            mi.Click += async (_, _) => await AdminLaunchAsync(name, path, args);
-            onScreen.Items.Add(mi);
-        }
-        Screen("Command Prompt", "cmd.exe", "/k cd /d C:\\");
-        Screen("PowerShell", "powershell.exe", "-NoExit -NoLogo -Command Set-Location C:\\");
-        Screen("Task Manager", "taskmgr.exe");
-        Screen("Registry Editor", "regedit.exe");
-        Screen("Device Manager", "mmc.exe", "devmgmt.msc");
-        Screen("Services", "mmc.exe", "services.msc");
-        Screen("Event Viewer", "mmc.exe", "eventvwr.msc");
-        Screen("Computer Management (disks, users)", "mmc.exe", "compmgmt.msc");
-        Screen("Task Scheduler", "mmc.exe", "taskschd.msc");
-        Screen("Programs and Features", "control.exe", "appwiz.cpl");
-        Screen("Network connections", "control.exe", "ncpa.cpl");
-        Screen("Resource Monitor", "resmon.exe");
-        Screen("System Information", "msinfo32.exe");
-        var other = new MenuItem { Header = "Other program..." };
-        other.Click += async (_, _) => await AdminLaunchOtherAsync();
-        onScreen.Items.Add(new Separator()); onScreen.Items.Add(other);
-        adminMenu.Items.Add(onScreen);
-        var gh = new MenuItem { Header = "Update software from GitHub..." };
-        gh.Click += async (_, _) => await UpdateFromGitHubAsync();
-        var ghSet = new MenuItem { Header = "GitHub settings..." };
-        ghSet.Click += (_, _) => GitHubSettings();
-
-        var updMenu = new ContextMenu();
-        var checkAtStart = new MenuItem { Header = "Check for a new admin app version at start", IsCheckable = true, IsChecked = _d.CheckForUpdates };
-        checkAtStart.Click += (_, _) => { _d.CheckForUpdates = checkAtStart.IsChecked; _d.Save(); };
-        var autoApp = new MenuItem { Header = "Install admin app updates automatically (no question)", IsCheckable = true, IsChecked = _d.AutoUpdateApp };
-        autoApp.Click += (_, _) => { _d.AutoUpdateApp = autoApp.IsChecked; _d.Save(); };
-        var checkNow = new MenuItem { Header = "Check for an admin app update now" };
-        checkNow.Click += async (_, _) => await CheckAppUpdateAsync(true);
-        var kioskAuto = new MenuItem
-        {
-            Header = "Kiosk PCs update themselves from GitHub when idle (push the setup to apply)",
-            IsCheckable = true, IsChecked = _d.Config.AutoUpdate
-        };
-        kioskAuto.Click += (_, _) => { _d.Config.AutoUpdate = kioskAuto.IsChecked; _d.Save(); _status.Text = "Saved. Use \"Push to selected PCs\" to send this to the PCs."; };
-        var newKey = new MenuItem { Header = "Create update signing key..." };
-        newKey.Click += (_, _) => CreateSigningKey();
-        updMenu.Items.Add(gh); updMenu.Items.Add(ghSet); updMenu.Items.Add(new Separator()); updMenu.Items.Add(checkNow); updMenu.Items.Add(checkAtStart); updMenu.Items.Add(autoApp);
-        updMenu.Items.Add(new Separator()); updMenu.Items.Add(kioskAuto);
-        updMenu.Items.Add(new Separator()); updMenu.Items.Add(newKey);
-        var remote = new MenuItem { Header = "Console, processes, services, programs, screenshot..." };
-        remote.Click += (_, _) => OpenRemoteTools();
-        adminMenu.Items.Add(remote);
-
-        var uninstallBtn = Btn("Uninstall kiosk...", async (_, _) => await UninstallAsync());
-        pcButtons.Children.Add(uninstallBtn);
-
-        // passwords menu
-        var pwMenu = new ContextMenu();
-        void PwItem(string text, Action act) { var mi = new MenuItem { Header = text }; mi.Click += (_, _) => act(); pwMenu.Items.Add(mi); }
-        void PwItemAsync(string text, Func<Task> act) { var mi = new MenuItem { Header = text }; mi.Click += async (_, _) => await act(); pwMenu.Items.Add(mi); }
-        PwItem("Friendly password (simple view)...", () => SetFriendlyPassword());
-        PwItem("Start password (admin)...", () => SetStartPassword());
-        PwItem("Exit password (kiosk)...", () => SetPassword());
-        PwItem("Pairing key...", () => ShowKey());
-        PwItemAsync("Joining password...", SetJoiningPasswordAsync);
-        PwItemAsync("Join PCs of another admin app...", JoinExistingAsync);
-        PwItemAsync("Setup wizard...", RunWizardAsync);
-
-        // PCs view
+        // ---------- PCs view ----------
         _banner.Visibility = Visibility.Collapsed;
         _banner.Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#FFF1E3")!;
         _banner.BorderBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#FFC999")!;
         _banner.BorderThickness = new Thickness(1.5);
         _banner.CornerRadius = new CornerRadius(14);
         _banner.Padding = new Thickness(16, 8, 8, 0);
-        _banner.Margin = new Thickness(0, 0, 0, 14);
+        _banner.Margin = new Thickness(0, 0, 0, 12);
         var bannerRow = new DockPanel();
         var bannerLater = Btn("Later", (_, _) => _banner.Visibility = Visibility.Collapsed);
         var bannerGo = Btn("Update now", async (_, _) => { if (_pendingRelease != null) await InstallAppUpdateAsync(_pendingRelease); }, "OrangeButton");
@@ -176,145 +78,194 @@ public class MainWindow : Window
         bannerRow.Children.Add(_bannerText);
         _banner.Child = bannerRow;
 
-        var stats = new UniformGrid { Rows = 1, Margin = new Thickness(0, 0, 0, 14) };
+        var stats = new UniformGrid { Rows = 1, Margin = new Thickness(0, 0, 0, 12) };
         var s1 = Theme.Stat("PCs online", _statOnline); s1.Margin = new Thickness(0, 0, 14, 0);
         var s2 = Theme.Stat("Offline", _statOffline); s2.Margin = new Thickness(0, 0, 14, 0);
         var s3 = Theme.Stat("Not on the newest software", _statOld);
         stats.Children.Add(s1); stats.Children.Add(s2); stats.Children.Add(s3);
 
+        // selection bar under the list
+        var selText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Theme.Text, TextTrimming = TextTrimming.CharacterEllipsis };
+        void UpdateSel()
+        {
+            var sel = _pcList.SelectedItems.Cast<PcItem>().Select(p => p.Name).ToList();
+            selText.Text = sel.Count == 0 ? "No PC selected. Click one or more PCs in the list to work on just those."
+                : sel.Count == 1 ? $"Selected: {sel[0]}" : $"{sel.Count} PCs selected: {string.Join(", ", sel)}";
+        }
+        _pcList.SelectionChanged += (_, _) => UpdateSel();
+        UpdateSel();
+        var pushSel = Btn("Push to selected", async (_, _) => await PushAsync(_pcList.SelectedItems.Cast<PcItem>().ToList()), "OrangeButton");
+        pushSel.Margin = new Thickness(12, 0, 0, 0);
+        var selBar = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+        DockPanel.SetDock(pushSel, Dock.Right);
+        selBar.Children.Add(pushSel);
+        selBar.Children.Add(selText);
+
         var listCard = Theme.Card(_pcList);
         var pcsView = new Grid();
         pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         pcsView.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(_banner, 0); Grid.SetRow(stats, 1); Grid.SetRow(pcButtons, 2); Grid.SetRow(listCard, 3);
-        pcsView.Children.Add(_banner); pcsView.Children.Add(stats); pcsView.Children.Add(pcButtons); pcsView.Children.Add(listCard);
+        pcsView.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(_banner, 0); Grid.SetRow(stats, 1); Grid.SetRow(listCard, 2); Grid.SetRow(selBar, 3);
+        pcsView.Children.Add(_banner); pcsView.Children.Add(stats); pcsView.Children.Add(listCard); pcsView.Children.Add(selBar);
 
-        // Kids' screen view
-        var tileButtons = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-        tileButtons.Children.Add(Btn("+ Steam game...", async (_, _) => await AddSteamAsync(), "PrimaryButton"));
-        tileButtons.Children.Add(Btn("+ Program...", (_, _) => AddProgram(), "PrimaryButton"));
-        tileButtons.Children.Add(Btn("+ Chrome", (_, _) => AddChrome(), "PrimaryButton"));
-        tileButtons.Children.Add(Btn("Rename...", (_, _) => RenameTile()));
-        tileButtons.Children.Add(Btn("Close first...", (_, _) => EditCloseFirst()));
-        tileButtons.Children.Add(Btn("Delete when closed...", (_, _) => EditDeleteOnClose()));
-        tileButtons.Children.Add(Btn("Change path...", (_, _) => EditPath()));
-        tileButtons.Children.Add(Btn("Set image...", (_, _) => SetImage()));
-        tileButtons.Children.Add(Btn("Screen text...", (_, _) => EditScreenText()));
-        tileButtons.Children.Add(Btn("Up", (_, _) => MoveTile(-1)));
-        tileButtons.Children.Add(Btn("Down", (_, _) => MoveTile(1)));
-        tileButtons.Children.Add(Btn("Remove", (_, _) => RemoveTile(), "DangerButton"));
-
-        var titleRow = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        var extBtn = Btn("Chrome extensions...", (_, _) => EditChromeExtensions());
-        extBtn.Margin = new Thickness(10, 0, 0, 0);
-        DockPanel.SetDock(extBtn, Dock.Right);
-        titleRow.Children.Add(extBtn);
-        var logoBtn = Btn("Logo...", (_, _) => LogoSettings());
-        logoBtn.Margin = new Thickness(10, 0, 0, 0);
-        DockPanel.SetDock(logoBtn, Dock.Right);
-        titleRow.Children.Add(logoBtn);
+        // ---------- Kids' screen view ----------
+        var titleRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         titleRow.Children.Add(new TextBlock { Text = "Title on the kids' screen:  ", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
         titleRow.Children.Add(_titleBox);
-
+        var tileHint = new TextBlock
+        {
+            Text = "The tiles on the kids' screen, in this order. Use \"Push to selected\" on the Home tab to send changes.",
+            Foreground = Theme.Muted, Margin = new Thickness(0, 0, 0, 10), TextWrapping = TextWrapping.Wrap
+        };
         var tilesPanel = new DockPanel { Margin = new Thickness(18) };
+        DockPanel.SetDock(tileHint, Dock.Top);
         DockPanel.SetDock(titleRow, Dock.Top);
-        DockPanel.SetDock(tileButtons, Dock.Bottom);
+        tilesPanel.Children.Add(tileHint);
         tilesPanel.Children.Add(titleRow);
-        tilesPanel.Children.Add(tileButtons);
         tilesPanel.Children.Add(_tileList);
         var tilesView = new Grid { Visibility = Visibility.Collapsed };
         tilesView.Children.Add(Theme.Card(tilesPanel));
 
-        // sidebar
-        var navPcs = Theme.Nav("PCs", Theme.IconMonitor);
-        var navTiles = Theme.Nav("Kids' screen", Theme.IconGrid);
-        var navAdmin = Theme.Nav("Admin tools", Theme.IconTool);
-        var navTweaks = Theme.Nav("Tweaks", Theme.IconZap);
-        var navUpd = Theme.Nav("Updates", Theme.IconRefresh);
-        var navPw = Theme.Nav("Passwords and key", Theme.IconLock);
+        // ---------- ribbon ----------
+        Action Go(Func<Task> f) => async () => await f();
+        Border RB(string glyph, string label, Action act, Ribbon.Kind kind = Ribbon.Kind.Normal) => Ribbon.Button(glyph, label, act, kind);
+        Border Sc(string glyph, string label, string name, string path, string args = "") =>
+            Ribbon.Button(glyph, label, Go(() => AdminLaunchAsync(name, path, args)));
+        List<PcItem> Sel() => _pcList.SelectedItems.Cast<PcItem>().ToList();
 
-        var heading = new TextBlock { FontSize = 26, FontWeight = FontWeights.Bold, Foreground = Theme.Text };
-        var subheading = new TextBlock { FontSize = 14, Foreground = Theme.Muted, Margin = new Thickness(0, 2, 0, 16) };
-        void Show(bool pcs)
+        var moreMenu = new ContextMenu();
+        void MoreItem(string name, string path, string args = "")
         {
-            pcsView.Visibility = pcs ? Visibility.Visible : Visibility.Collapsed;
-            tilesView.Visibility = pcs ? Visibility.Collapsed : Visibility.Visible;
-            navPcs.Tag = pcs ? "active" : null;
-            navTiles.Tag = pcs ? null : "active";
-            heading.Text = pcs ? "Kids' PCs" : "What the kids see";
-            subheading.Text = pcs ? "Everything you manage, in one place" : "The tiles on the kids' screen, in this order. Use \"Push to selected\" on the PCs page to send changes.";
+            var mi = new MenuItem { Header = name };
+            mi.Click += async (_, _) => await AdminLaunchAsync(name, path, args);
+            moreMenu.Items.Add(mi);
         }
-        void Open(System.Windows.Controls.ContextMenu m, UIElement target)
-        {
-            m.PlacementTarget = target;
-            m.Placement = System.Windows.Controls.Primitives.PlacementMode.Right;
-            m.IsOpen = true;
-        }
-        navPcs.Click += (_, _) => Show(true);
-        navTiles.Click += (_, _) => Show(false);
-        navAdmin.Click += (_, _) => Open(adminMenu, navAdmin);
-        navTweaks.Click += async (_, _) => await TweaksAsync();
-        navUpd.Click += (_, _) => Open(updMenu, navUpd);
-        navPw.Click += (_, _) => Open(pwMenu, navPw);
-        Show(true);
+        MoreItem("Computer Management (disks, users)", "mmc.exe", "compmgmt.msc");
+        MoreItem("Task Scheduler", "mmc.exe", "taskschd.msc");
+        MoreItem("Programs and Features", "control.exe", "appwiz.cpl");
+        MoreItem("Network connections", "control.exe", "ncpa.cpl");
+        MoreItem("Resource Monitor", "resmon.exe");
+        MoreItem("System Information", "msinfo32.exe");
+        var otherItem = new MenuItem { Header = "Other program..." };
+        otherItem.Click += async (_, _) => await AdminLaunchOtherAsync();
+        moreMenu.Items.Add(new Separator()); moreMenu.Items.Add(otherItem);
+        Border? moreBtn = null;
+        moreBtn = RB(Ribbon.More, "More...", () => { moreMenu.PlacementTarget = moreBtn; moreMenu.Placement = PlacementMode.Bottom; moreMenu.IsOpen = true; });
 
-        var brandRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4, 0, 24) };
+        var builders = new Dictionary<string, Func<UIElement>>
+        {
+            ["Home"] = () => Ribbon.Row(
+                Ribbon.Group("Kiosk setup", RB(Ribbon.Send, "Push to selected", Go(() => PushAsync(Sel())), Ribbon.Kind.Primary), RB(Ribbon.Send, "Push to all", Go(() => PushAsync(_pcs.ToList())))),
+                Ribbon.Group("Remote control",
+                    RB(Ribbon.Unlock, "Unlock to desktop", Go(() => RemoteAsync("unlock", "Unlock", "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again"))),
+                    RB(Ribbon.Sync, "Restart", Go(() => RemoteAsync("restart", "Restart", "restart in 10 seconds"))),
+                    RB(Ribbon.Power, "Shut down", Go(() => RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds")), Ribbon.Kind.Danger),
+                    RB(Ribbon.Flash, "Wake up all", Go(WakeAllAsync))),
+                Ribbon.Group("PC list", RB(Ribbon.Add, "Add PC", () => AddPc()), RB(Ribbon.Delete, "Remove", () => RemovePc()), RB(Ribbon.Sync, "Check now", Go(RefreshAsync))),
+                Ribbon.Group("Software", RB(Ribbon.Download, "Update software", Go(UpdateSoftwareAsync)))),
+            ["Kids' screen"] = () => Ribbon.Row(
+                Ribbon.Group("Add tile", RB(Ribbon.Game, "Steam game", Go(AddSteamAsync), Ribbon.Kind.Primary), RB(Ribbon.App, "Program", () => AddProgram(), Ribbon.Kind.Primary), RB(Ribbon.Globe, "Chrome", () => AddChrome(), Ribbon.Kind.Primary)),
+                Ribbon.Group("Selected tile",
+                    RB(Ribbon.Edit, "Rename", () => RenameTile()), RB(Ribbon.Folder, "Change path", () => EditPath()), RB(Ribbon.Picture, "Set image", () => SetImage()),
+                    RB(Ribbon.Cancel, "Close first", () => EditCloseFirst()), RB(Ribbon.Delete, "Delete when closed", () => EditDeleteOnClose()), RB(Ribbon.Font, "Screen text", () => EditScreenText())),
+                Ribbon.Group("Order", RB(Ribbon.Up, "Up", () => MoveTile(-1)), RB(Ribbon.Down, "Down", () => MoveTile(1)), RB(Ribbon.Delete, "Remove", () => RemoveTile(), Ribbon.Kind.Danger)),
+                Ribbon.Group("Screen", RB(Ribbon.Puzzle, "Chrome extensions", () => EditChromeExtensions()), RB(Ribbon.Picture, "Logo", () => LogoSettings()))),
+            ["Accounts"] = () => Ribbon.Row(
+                Ribbon.Group("Windows accounts", RB(Ribbon.AddPerson, "Create account", Go(CreateAccountAsync)), RB(Ribbon.Person, "Delete account", Go(DeleteAccountAsync))),
+                Ribbon.Group("Kiosk account", RB(Ribbon.Lock, "Kiosk options", Go(OptionsAsync))),
+                Ribbon.Group("Remove", RB(Ribbon.Delete, "Uninstall kiosk", Go(UninstallAsync), Ribbon.Kind.Danger))),
+            ["Tools"] = () => Ribbon.Row(
+                Ribbon.Group("Files and installs", RB(Ribbon.Share, "Share folder", Go(ShareSetupAsync)), RB(Ribbon.Send, "Send files", Go(SendFileAsync)), RB(Ribbon.Download, "Install a program", Go(InstallProgramAsync))),
+                Ribbon.Group("On the PC screen", RB(Ribbon.Play, "Start a program", Go(StartProgramAsync)))),
+            ["Remote admin"] = () => Ribbon.Row(
+                Ribbon.Group("Open on the PC screen (as admin)",
+                    Sc(Ribbon.Cmd, "CMD", "Command Prompt", "cmd.exe", "/k cd /d C:\\"), Sc(Ribbon.Cmd, "PowerShell", "PowerShell", "powershell.exe", "-NoExit -NoLogo -Command Set-Location C:\\"),
+                    Sc(Ribbon.App, "Task Manager", "Task Manager", "taskmgr.exe"), Sc(Ribbon.Settings, "Registry", "Registry Editor", "regedit.exe"),
+                    Sc(Ribbon.Settings, "Device Manager", "Device Manager", "mmc.exe", "devmgmt.msc"), Sc(Ribbon.List, "Event Viewer", "Event Viewer", "mmc.exe", "eventvwr.msc"),
+                    Sc(Ribbon.Settings, "Services", "Services", "mmc.exe", "services.msc"), moreBtn!),
+                Ribbon.Group("Window on this PC",
+                    RB(Ribbon.Cmd, "Console", () => OpenRemoteTools()), RB(Ribbon.List, "Processes", () => OpenRemoteTools()), RB(Ribbon.Settings, "Services", () => OpenRemoteTools()),
+                    RB(Ribbon.App, "Programs", () => OpenRemoteTools()), RB(Ribbon.Camera, "Screenshot", () => OpenRemoteTools()))),
+            ["Tweaks"] = () => Ribbon.Row(
+                Ribbon.Group("Windows tweaks", RB(Ribbon.Settings, "Tweaks...", Go(TweaksAsync), Ribbon.Kind.Primary))),
+            ["Updates"] = () => Ribbon.Row(
+                Ribbon.Group("Kiosk software", RB(Ribbon.Download, "Update from GitHub", Go(UpdateFromGitHubAsync)), RB(Ribbon.Folder, "Update from folder", Go(UpdateSoftwareAsync)), RB(Ribbon.Sync, "Check now", Go(RefreshAsync))),
+                Ribbon.Group("Admin app", RB(Ribbon.Download, "Look for new version", Go(() => CheckAppUpdateAsync(true))),
+                    Ribbon.Toggle("Check at start", () => _d.CheckForUpdates, v => { _d.CheckForUpdates = v; _d.Save(); }),
+                    Ribbon.Toggle("Install by itself", () => _d.AutoUpdateApp, v => { _d.AutoUpdateApp = v; _d.Save(); })),
+                Ribbon.Group("Kiosk PCs", Ribbon.Toggle("Self-update", () => _d.Config.AutoUpdate, v => { _d.Config.AutoUpdate = v; _d.Save(); _status.Text = "Saved. Use \"Push to selected\" to send this to the PCs."; })),
+                Ribbon.Group("Signing", RB(Ribbon.Key, "Signing key", () => CreateSigningKey()), RB(Ribbon.Settings, "GitHub settings", () => GitHubSettings()))),
+            ["Security"] = () => Ribbon.Row(
+                Ribbon.Group("Passwords", RB(Ribbon.Lock, "Exit password", () => SetPassword()), RB(Ribbon.Lock, "Start password", () => SetStartPassword()),
+                    RB(Ribbon.Person, "Simple password", () => SetFriendlyPassword()), RB(Ribbon.Key, "Joining password", Go(SetJoiningPasswordAsync))),
+                Ribbon.Group("Key", RB(Ribbon.Key, "Pairing key", () => ShowKey())))
+        };
+
+        var ribbonHost = new ContentControl();
+        var tabs = new Dictionary<string, Border>();
+        void SelectTab(string name)
+        {
+            foreach (var kv in tabs) Ribbon.SetActive(kv.Value, kv.Key == name);
+            ribbonHost.Content = builders[name]();
+            bool kids = name == "Kids' screen";
+            pcsView.Visibility = kids ? Visibility.Collapsed : Visibility.Visible;
+            tilesView.Visibility = kids ? Visibility.Visible : Visibility.Collapsed;
+        }
+        var tabStrip = new DockPanel { Margin = new Thickness(18, 10, 18, 0) };
+        var setupMenu = new ContextMenu();
+        var miWizard = new MenuItem { Header = "Setup wizard..." };
+        miWizard.Click += async (_, _) => await RunWizardAsync();
+        var miJoin = new MenuItem { Header = "Join PCs of another admin app..." };
+        miJoin.Click += async (_, _) => await JoinExistingAsync();
+        setupMenu.Items.Add(miWizard); setupMenu.Items.Add(miJoin);
+        Border? setupTab = null;
+        setupTab = Ribbon.Tab("Setup \u25BE", true, () => { setupMenu.PlacementTarget = setupTab; setupMenu.Placement = PlacementMode.Bottom; setupMenu.IsOpen = true; });
+        DockPanel.SetDock(setupTab, Dock.Right);
+        tabStrip.Children.Add(setupTab);
+        var leftTabs = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var name in new[] { "Home", "Kids' screen", "Accounts", "Tools", "Remote admin", "Tweaks", "Updates", "Security" })
+        {
+            var n = name;
+            var t = Ribbon.Tab(n, false, () => SelectTab(n));
+            tabs[n] = t;
+            leftTabs.Children.Add(t);
+        }
+        tabStrip.Children.Add(leftTabs);
+
+        // title row
+        var brandRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         try
         {
             brandRow.Children.Add(new System.Windows.Controls.Image
             {
                 Source = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/icon.png")),
-                Width = 40, Height = 40, Margin = new Thickness(0, 0, 12, 0)
+                Width = 30, Height = 30, Margin = new Thickness(0, 0, 10, 0)
             });
         }
         catch { }
-        var brandText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        brandText.Children.Add(new TextBlock { Text = "Kiosk Admin", FontSize = 17, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White });
-        brandText.Children.Add(new TextBlock { Text = "Build " + BuildInfo.ReleaseTag, FontSize = 12, Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#9FD3D3")! });
-        brandRow.Children.Add(brandText);
-
-        var navStack = new StackPanel();
-        foreach (var n in new[] { navPcs, navTiles, navAdmin, navTweaks, navUpd, navPw }) navStack.Children.Add(n);
-
-        var sideBottom = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var secureNote = new TextBlock
-        {
-            Text = "All updates are signature checked.", TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Margin = new Thickness(8, 0, 8, 10),
-            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#CDEBEB")!
-        };
-        sideBottom.Children.Add(secureNote);
+        brandRow.Children.Add(new TextBlock { Text = "Kiosk Admin", FontSize = 17, FontWeight = FontWeights.Bold, Foreground = Theme.Text, VerticalAlignment = VerticalAlignment.Center });
+        brandRow.Children.Add(new TextBlock { Text = "   build " + BuildInfo.ReleaseTag, FontSize = 12, Foreground = Theme.Muted, VerticalAlignment = VerticalAlignment.Center });
+        var titleBar = new DockPanel { Margin = new Thickness(18, 10, 18, 0) };
         if (!string.IsNullOrEmpty(_d.LockHash))
         {
-            var lockApp = new Button { Content = "Lock app", Style = Theme.Get("NavButton"), HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(0) };
-            lockApp.Click += (_, _) =>
+            var lockApp = Btn("Lock app", (_, _) =>
             {
                 _d.Config.Title = _titleBox.Text; _d.Save();
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true }); } catch { }
                 Application.Current.Shutdown();
-            };
-            sideBottom.Children.Add(lockApp);
+            });
+            lockApp.Margin = new Thickness(0);
+            DockPanel.SetDock(lockApp, Dock.Right);
+            titleBar.Children.Add(lockApp);
         }
+        titleBar.Children.Add(brandRow);
 
-        var side = new DockPanel { Margin = new Thickness(16, 20, 16, 18) };
-        DockPanel.SetDock(brandRow, Dock.Top);
-        DockPanel.SetDock(sideBottom, Dock.Bottom);
-        side.Children.Add(brandRow);
-        side.Children.Add(sideBottom);
-        side.Children.Add(navStack);
-        var sideBorder = new Border
-        {
-            Child = side,
-            Background = new System.Windows.Media.LinearGradientBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#083A3D"),
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0B6163"), 90)
-        };
-
-        // status messages disappear on their own (not the "working..." ones, which are replaced by the result)
-        _status.Foreground = Theme.Good;
+        // status bar (messages disappear on their own, not the "working..." ones, which are replaced by the result)
+        _status.Foreground = System.Windows.Media.Brushes.White;
         _status.FontWeight = FontWeights.SemiBold;
-        _status.Margin = new Thickness(0, 10, 0, 0);
+        _status.Margin = new Thickness(0);
         var fade = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
         fade.Tick += (_, _) => { fade.Stop(); _status.Text = ""; };
         System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock))
@@ -323,26 +274,27 @@ public class MainWindow : Window
                 fade.Stop();
                 if (_status.Text.Length > 0 && !_status.Text.EndsWith("...")) fade.Start();
             });
+        var statusBar = new Border
+        {
+            Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0B7F80")!,
+            Padding = new Thickness(18, 7, 18, 7), MinHeight = 32, Child = _status
+        };
 
-        var views = new Grid();
+        var ribbonPanel = Ribbon.Panel(ribbonHost);
+        ribbonPanel.Margin = new Thickness(18, 0, 18, 0);
+        var views = new Grid { Margin = new Thickness(18, 14, 18, 14) };
         views.Children.Add(pcsView);
         views.Children.Add(tilesView);
 
-        var main = new DockPanel { Margin = new Thickness(28, 24, 28, 18) };
-        var head = new StackPanel();
-        head.Children.Add(heading); head.Children.Add(subheading);
-        DockPanel.SetDock(head, Dock.Top);
-        DockPanel.SetDock(_status, Dock.Bottom);
-        main.Children.Add(head);
-        main.Children.Add(_status);
-        main.Children.Add(views);
-
-        var root = new Grid();
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(sideBorder, 0); Grid.SetColumn(main, 1);
-        root.Children.Add(sideBorder); root.Children.Add(main);
+        var root = new DockPanel();
+        DockPanel.SetDock(titleBar, Dock.Top);
+        DockPanel.SetDock(tabStrip, Dock.Top);
+        DockPanel.SetDock(ribbonPanel, Dock.Top);
+        DockPanel.SetDock(statusBar, Dock.Bottom);
+        root.Children.Add(titleBar); root.Children.Add(tabStrip); root.Children.Add(ribbonPanel);
+        root.Children.Add(statusBar); root.Children.Add(views);
         Content = root;
+        SelectTab("Home");
 
         _timer.Tick += async (_, _) => await RefreshAsync();
         _timer.Start();
@@ -696,7 +648,7 @@ public class MainWindow : Window
         var bad = report.Where(x => x.Problems.Count > 0).Select(x => $"{x.Pc.Name}: {string.Join("; ", x.Problems)}").ToList();
         if (bad.Count > 0)
             text += "\n\nNeeds attention:\n" + string.Join("\n", bad) +
-                    "\n\nTurn those PCs on, or run Update software... on them, then run Passwords and key > Setup wizard again.";
+                    "\n\nTurn those PCs on, or run Update software... on them, then run Setup > Setup wizard again.";
         _status.Text = $"Setup finished: {good} of {report.Length} PCs complete.";
         MessageBox.Show(this, text, "Setup finished", MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -1682,7 +1634,7 @@ public class MainWindow : Window
                 box,
                 Ui.Label("Push the setup to apply it. Chrome installs them within a few minutes and the kids cannot remove them. " +
                          "Windows only lets Chrome install extensions by itself on some PCs (for example joined to a domain). " +
-                         "If it does not install on a PC, the extension is still allowed: use Admin tools > Open on the PC's screen to open Chrome there and add it from the Web Store.")))
+                         "If it does not install on a PC, the extension is still allowed: use the Remote admin tab (open on the PC's screen) to open Chrome there and add it from the Web Store.")))
             return;
 
         var ids = System.Text.RegularExpressions.Regex.Matches(box.Text, "[a-p]{32}").Select(m => m.Value).Distinct().ToList();

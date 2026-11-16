@@ -2,7 +2,7 @@
 
 > The newer, automatic and signed way is described in **UPDATES.md**. A token is only needed if the repository stays private.
 
-GitHub builds the software for you and keeps it in a "release". In Kiosk Admin, **Admin tools > Update software from GitHub...** downloads the newest release and sends it to the selected PCs (only changed files are sent, exactly like the normal "Update software...").
+GitHub builds the software for you and keeps it in a "release". In Kiosk Admin, **Updates > Update from GitHub** downloads the newest release and sends it to the selected PCs (only changed files are sent, exactly like the normal "Update software...").
 
 ## One-time setup
 
@@ -27,7 +27,7 @@ GitHub builds the software for you and keeps it in a "release". In Kiosk Admin, 
    - Repository access: *Only select repositories* > your kiosk repository.
    - Permissions > Repository permissions > **Contents: Read-only**.
    - Set an expiry (for example one year) and copy the token (shown once).
-5. In Kiosk Admin: **Admin tools > GitHub settings...** and enter `<your-name>/kiosk-suite` and the token. The token is stored encrypted for your Windows account.
+5. In Kiosk Admin: **Updates > GitHub settings** and enter `<your-name>/kiosk-suite` and the token. The token is stored encrypted for your Windows account.
 
 ## Every time you change the software
 
@@ -38,7 +38,7 @@ GitHub builds the software for you and keeps it in a "release". In Kiosk Admin, 
    git push origin v2026.11.04
    ```
 3. Wait for the green tick in the Actions tab.
-4. In Kiosk Admin: select the PCs > **Admin tools > Update software from GitHub...** > Yes.
+4. In Kiosk Admin: select the PCs > **Updates > Update from GitHub** > Yes.
 
 The admin app itself is not updated this way: download `KioskAdminSetup.exe` from the release and run it on your PC.
 

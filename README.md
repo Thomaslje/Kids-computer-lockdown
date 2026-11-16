@@ -83,8 +83,8 @@ Both installers set the network profile to Private and turn on network discovery
 ## Tools menu
 **Tools** in the admin app: create a password-free `C:\Share` (shared as "Share") on the PCs; send files into it (this goes through the agent, so it works even if Windows sharing does not); install a program silently (an .exe/.msi from the admin PC, or one already on the PCs, plus the silent switch such as `/S`; NVIDIA drivers use `-s -noreboot`); and start a program on the kids' screen without it being a tile (saved list, the NVIDIA Control Panel is preset). Installers run as SYSTEM in the background, so they cannot show windows or ask questions.
 
-## Admin tools menu
-**Admin tools** in the admin app. "Open on the PC's screen" starts CMD, PowerShell, Task Manager, Registry Editor, Device Manager, Services, Event Viewer, Computer Management, Task Scheduler, Programs and Features, Network connections, Resource Monitor, System Information or any program on the screen of the person logged in, running as SYSTEM (admin rights; the Kiosk account's Task Manager block does not apply to SYSTEM). "Console, processes, ..." opens a window for one PC with: a remote console (PowerShell or CMD, output shown live, with quick commands including Windows Update), process list with Kill, services with Start/Stop/Restart, installed programs, and a screenshot of the kids' screen. Everything runs as SYSTEM.
+## Remote admin tab
+The **Remote admin** tab in the admin app. "Open on the PC's screen" starts CMD, PowerShell, Task Manager, Registry Editor, Device Manager, Services, Event Viewer, Computer Management, Task Scheduler, Programs and Features, Network connections, Resource Monitor, System Information or any program on the screen of the person logged in, running as SYSTEM (admin rights; the Kiosk account's Task Manager block does not apply to SYSTEM). "Console, processes, ..." opens a window for one PC with: a remote console (PowerShell or CMD, output shown live, with quick commands including Windows Update), process list with Kill, services with Start/Stop/Restart, installed programs, and a screenshot of the kids' screen. Everything runs as SYSTEM.
 
 ## Start password
 **Start password...** (next to "Pairing key...") makes the admin app ask for a password when it opens (5 tries, with growing waits). Leave both fields empty to remove it. It is stored as a salted hash in `%APPDATA%\KioskAdmin\admin.json`. If you forget it, close the admin app and delete the `LockHash` line in that file. Note the lock only stops people using the app: the pairing key in the same file is not encrypted, so keep the PC itself protected.
@@ -102,7 +102,7 @@ Select a program tile > **Close first...** and list program names (no .exe, comm
 A program tile's path may use `*` (in any folder or file name) and environment variables, for example `%LOCALAPPDATA%\Roblox\Versions\*\RobloxPlayerLauncher.exe`. The launcher expands it on the kids' PC (inside the Kiosk account) and starts the newest match. When you add a program or use **Change path...** and paste a path with a user folder or a version folder, the admin app offers to convert it automatically (`version-<hex>`, `app-1.2.3`, `1.2.3.4` folders and `C:\Users\<name>\AppData\Local`).
 
 ## GitHub updates
-See GITHUB.md: a GitHub Actions workflow (.github/workflows/build.yml) builds a release; **Admin tools > Update software from GitHub...** downloads it and sends it to the selected PCs.
+See GITHUB.md: a GitHub Actions workflow (.github/workflows/build.yml) builds a release; **Updates > Update from GitHub** downloads it and sends it to the selected PCs.
 
 ## Automatic updates
 The admin app checks GitHub at start and offers the new version with its change list; kiosk PCs can update themselves when idle. All downloads are signature checked. See UPDATES.md.
