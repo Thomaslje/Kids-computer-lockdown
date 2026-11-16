@@ -60,7 +60,7 @@ public class KioskConfig
 }
 
 public record SteamGame(string AppId, string Name);
-public record PingInfo(string PcName, int ConfigVersion, string Revision = "", string TeamViewerId = "", string Mac = "", string Broadcast = "");
+public record PingInfo(string PcName, int ConfigVersion, string Revision = "", string TeamViewerId = "", string Mac = "", string Broadcast = "", bool JoinSet = false);
 /// <summary>Password = null or empty means "leave the account password alone".</summary>
 public record KioskOptions(string? Password, bool BlockCtrlAltDel);
 public record UninstallRequest(bool RemoveAccount);
@@ -84,4 +84,5 @@ public static class Paths
     public static string KioskUserFile => Path.Combine(DataDir, "kiosk.user");
     public static string PrivateDir => Path.Combine(DataDir, "Private");
     public static string KeyFile => Path.Combine(PrivateDir, "agent.key");
+    public static string JoinFile => Path.Combine(PrivateDir, "join.json");
 }

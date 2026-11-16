@@ -568,12 +568,31 @@ public class MainWindow : Window
         if (key == Key.K && (Keyboard.Modifiers & all) == all)
         {
             e.Handled = true;
-            if (AskPassword()) ExitKiosk();
-            else _status.Text = "Wrong password.";
+            if (DateTime.UtcNow < _exitLockedUntil)
+            {
+                var left = (int)Math.Ceiling((_exitLockedUntil - DateTime.UtcNow).TotalMinutes);
+                _status.Text = $"Too many wrong passwords. Try again in {left} minute(s).";
+                return;
+            }
+            if (AskPassword(out var answered)) { _exitFails = 0; ExitKiosk(); }
+            else if (answered)
+            {
+                _exitFails++;
+                if (_exitFails >= 3)
+                {
+                    var minutes = Math.Min(15, 1 << Math.Min(_exitFails - 3, 4));   // 1, 2, 4, 8, 15 minutes
+                    _exitLockedUntil = DateTime.UtcNow.AddMinutes(minutes);
+                    _status.Text = $"Wrong password. Locked for {minutes} minute(s).";
+                }
+                else _status.Text = "Wrong password.";
+            }
         }
     }
 
-    bool AskPassword()
+    int _exitFails;
+    DateTime _exitLockedUntil = DateTime.MinValue;
+
+    bool AskPassword(out bool answered)
     {
         var pb = new PasswordBox { Width = 260, Margin = new Thickness(0, 8, 0, 8) };
         var ok = new Button { Content = "OK", Width = 80, IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right };
@@ -589,7 +608,8 @@ public class MainWindow : Window
         };
         ok.Click += (_, _) => dlg.DialogResult = true;
         dlg.Loaded += (_, _) => pb.Focus();
-        return dlg.ShowDialog() == true && Passwords.Verify(pb.Password, _cfg.ExitPasswordHash);
+        answered = dlg.ShowDialog() == true;
+        return answered && Passwords.Verify(pb.Password, _cfg.ExitPasswordHash);
     }
 
     void ExitKiosk()

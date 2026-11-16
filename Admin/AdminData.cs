@@ -36,6 +36,9 @@ public class AdminData
     public string InstallArgs { get; set; } = "";
     public string? InstallFolder { get; set; }
     public List<string>? Tweaks { get; set; }        // ticked tweaks; null = the defaults
+    public bool WizardDone { get; set; }             // the first-start setup wizard has been run (or skipped)
+    public string JoinSalt { get; set; } = "";       // joining password: only the salt and derived key are kept, not the password
+    public string JoinKey { get; set; } = "";
     public bool OptBlockCtrlAltDel { get; set; }   // the password is deliberately NOT stored here
 
     static string FilePath => Path.Combine(
@@ -72,6 +75,8 @@ public class PcItem : INotifyPropertyChanged
     public string Status { get => _status; set { _status = value; Raise(nameof(Status)); } }
     public string Software { get => _software; set { _software = value; Raise(nameof(Software)); } }
     public string TeamViewer { get => _teamViewer; set { _teamViewer = value; Raise(nameof(TeamViewer)); } }
+    string _joinPw = "";
+    public string JoinPw { get => _joinPw; set { _joinPw = value; Raise(nameof(JoinPw)); } }
     public string Version { get => _version; set { _version = value; Raise(nameof(Version)); } }
 
     public event PropertyChangedEventHandler? PropertyChanged;

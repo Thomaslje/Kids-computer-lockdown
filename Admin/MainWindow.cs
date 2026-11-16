@@ -49,6 +49,7 @@ public class MainWindow : Window
         gv.Columns.Add(new GridViewColumn { Header = "TeamViewer ID", DisplayMemberBinding = new Binding("TeamViewer"), Width = 110 });
         gv.Columns.Add(new GridViewColumn { Header = "Setup v.", DisplayMemberBinding = new Binding("Version"), Width = 60 });
         gv.Columns.Add(new GridViewColumn { Header = "Software", DisplayMemberBinding = new Binding("Software"), Width = 100 });
+        gv.Columns.Add(new GridViewColumn { Header = "Joining pw", DisplayMemberBinding = new Binding("JoinPw"), Width = 80 });
         _pcList.View = gv;
         var copyId = new MenuItem { Header = "Copy TeamViewer ID" };
         copyId.Click += (_, _) =>
@@ -149,10 +150,14 @@ public class MainWindow : Window
         // passwords menu
         var pwMenu = new ContextMenu();
         void PwItem(string text, Action act) { var mi = new MenuItem { Header = text }; mi.Click += (_, _) => act(); pwMenu.Items.Add(mi); }
+        void PwItemAsync(string text, Func<Task> act) { var mi = new MenuItem { Header = text }; mi.Click += async (_, _) => await act(); pwMenu.Items.Add(mi); }
         PwItem("Friendly password (simple view)...", () => SetFriendlyPassword());
         PwItem("Start password (admin)...", () => SetStartPassword());
         PwItem("Exit password (kiosk)...", () => SetPassword());
         PwItem("Pairing key...", () => ShowKey());
+        PwItemAsync("Joining password...", SetJoiningPasswordAsync);
+        PwItemAsync("Join PCs of another admin app...", JoinExistingAsync);
+        PwItemAsync("Setup wizard...", RunWizardAsync);
 
         // PCs view
         _banner.Visibility = Visibility.Collapsed;
@@ -341,7 +346,7 @@ public class MainWindow : Window
 
         _timer.Tick += async (_, _) => await RefreshAsync();
         _timer.Start();
-        Loaded += async (_, _) => { await CheckAppUpdateAsync(false); await RefreshAsync(); };
+        Loaded += async (_, _) => { if (NeedsWizard) await RunWizardAsync(); await CheckAppUpdateAsync(false); await RefreshAsync(); };
         Closing += (_, _) => { _d.Config.Title = _titleBox.Text; _d.Save(); };
     }
 
@@ -378,7 +383,13 @@ public class MainWindow : Window
         _pcs.Add(new PcItem { Host = host, Name = host });
         _d.Save();
         UpdateStats();
-        _ = RefreshAsync();
+        _ = AfterAddAsync(_pcs[^1]);
+    }
+
+    async Task AfterAddAsync(PcItem pc)
+    {
+        await RefreshAsync();
+        if (_d.JoinKey.Length > 0 && pc.Status == "Online") await PushJoinAsync(new List<PcItem> { pc }, false);   // new PCs get the joining password too
     }
 
     void RemovePc()
@@ -409,6 +420,7 @@ public class MainWindow : Window
                         pc.Name = info.PcName; pc.Status = "Online"; pc.Version = info.ConfigVersion.ToString();
                         pc.Software = string.IsNullOrEmpty(info.Revision) ? "older" : info.Revision;
                         pc.TeamViewer = info.TeamViewerId;
+                        pc.JoinPw = !AgentAtLeast(pc.Software, JoinRev) ? "-" : info.JoinSet ? "Set" : "Not set";
                         if (!string.IsNullOrEmpty(info.Mac))
                         {
                             pc.Mac = info.Mac; pc.Broadcast = info.Broadcast;
@@ -583,6 +595,182 @@ public class MainWindow : Window
         await Task.Delay(45000);
         await RefreshAsync();
         _status.Text = $"Wake up sent to {sent} of {all.Count} PCs." + (unknown.Count > 0 ? " No address known yet for: " + string.Join(", ", unknown.Select(p => p.Name)) + "." : "");
+    }
+
+    // ---------- setup wizard, joining password ----------
+
+    const string JoinRev = "2026-11-16-a";
+
+    bool NeedsWizard => !_d.WizardDone && _d.Pcs.Count == 0 && string.IsNullOrEmpty(_d.Config.ExitPasswordHash);
+
+    void AddHostQuiet(string host)
+    {
+        if (_d.Pcs.Any(p => p.Host.Equals(host, StringComparison.OrdinalIgnoreCase))) return;
+        _d.Pcs.Add(new PcEntry { Host = host });
+        _pcs.Add(new PcItem { Host = host, Name = host });
+    }
+
+    async Task RunWizardAsync()
+    {
+        var w = new SetupWizard(this, _d);
+        var finished = w.ShowDialog() == true;
+        _d.WizardDone = true;
+        if (!finished) { _d.Save(); return; }
+        var r = w.Result;
+        foreach (var h in r.Hosts) AddHostQuiet(h);
+
+        if (r.JoinMode)
+        {
+            _d.KeyBase64 = r.JoinedKeyB64!;
+            _d.Save();
+            UpdateStats();
+            _status.Text = $"Joined. This admin app now manages {_pcs.Count} PC(s) with the pairing key of the existing setup.";
+            await RefreshAsync();
+            return;
+        }
+
+        _d.Config.ExitPasswordHash = Passwords.Hash(r.ExitPassword);
+        _d.OptBlockCtrlAltDel = r.BlockCtrlAltDel;
+        _d.Tweaks = r.Tweaks;
+        if (r.Title.Length > 0) { _d.Config.Title = r.Title; _titleBox.Text = r.Title; }
+        if (r.JoinPassword.Length > 0)
+        {
+            var js = Join.NewSecret(r.JoinPassword);
+            _d.JoinSalt = js.SaltB64; _d.JoinKey = js.KeyB64;
+        }
+        _d.Save();
+        UpdateStats();
+        await RefreshAsync();
+        await ApplyWizardAsync(r);
+    }
+
+    async Task ApplyWizardAsync(WizardResult r)
+    {
+        var pcs = _pcs.ToList();
+        if (pcs.Count == 0) return;
+        _status.Text = $"Applying your defaults to {pcs.Count} PC(s)...";
+
+        await PushAsync(pcs);   // exit password and the current tiles
+        var pushed = _d.Config.Version.ToString();
+
+        var opts = new KioskOptions(r.KioskPassword.Length > 0 ? r.KioskPassword : null, r.BlockCtrlAltDel);
+        var optsJson = Json.To(opts);
+        var tweaksJson = r.Tweaks.Count > 0 ? Json.To(new TweaksRequest(r.Tweaks)) : null;
+        var accountJson = r.AdminName.Length > 0 ? Json.To(new CreateAccountRequest(r.AdminName, r.AdminPassword, "S-1-5-32-544", true)) : null;
+        var joinJson = _d.JoinKey.Length > 0 ? Json.To(new JoinSetRequest(_d.JoinSalt, _d.JoinKey)) : null;
+
+        var report = await Task.WhenAll(pcs.Select(async pc =>
+        {
+            var problems = new List<string>();
+            bool restart = false;
+            if (pc.Status != "Online") { problems.Add("not online"); return (Pc: pc, Problems: problems, Restart: restart); }
+            if (pc.Version != pushed) problems.Add("the setup push failed");
+
+            async Task Step(string what, string cmd, string? json, string minRev, int timeoutMs)
+            {
+                if (!AgentAtLeast(pc.Software, minRev)) { problems.Add(what + ": software too old (use Update software... first)"); return; }
+                try
+                {
+                    var res = await Net.CallAsync(pc.Host, Key, cmd, json, timeoutMs);
+                    if (!res.Ok) { problems.Add(what + ": " + res.Error); return; }
+                    if ((cmd == "setoptions" || cmd == "tweaks") && !string.IsNullOrEmpty(res.Data))
+                        if (Json.From<OptionsResult>(res.Data)?.RestartNeeded == true) restart = true;
+                }
+                catch (Exception ex) { problems.Add(what + ": " + ex.Message); }
+            }
+
+            if (opts.Password != null || opts.BlockCtrlAltDel) await Step("Kiosk options", "setoptions", optsJson, "2026-10-25-c", 30000);
+            if (accountJson != null) await Step("Administrator account", "create-account", accountJson, "2026-11-06-c", 30000);
+            if (tweaksJson != null) await Step("Tweaks", "tweaks", tweaksJson, "2026-10-27-a", 60000);
+            if (joinJson != null) await Step("Joining password", "set-join", joinJson, JoinRev, 15000);
+            return (Pc: pc, Problems: problems, Restart: restart);
+        }));
+
+        int good = report.Count(x => x.Problems.Count == 0);
+        var text = $"Everything was applied on {good} of {report.Length} PCs.";
+        var bad = report.Where(x => x.Problems.Count > 0).Select(x => $"{x.Pc.Name}: {string.Join("; ", x.Problems)}").ToList();
+        if (bad.Count > 0)
+            text += "\n\nNeeds attention:\n" + string.Join("\n", bad) +
+                    "\n\nTurn those PCs on, or run Update software... on them, then run Passwords and key > Setup wizard again.";
+        _status.Text = $"Setup finished: {good} of {report.Length} PCs complete.";
+        MessageBox.Show(this, text, "Setup finished", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        var needRestart = report.Where(x => x.Restart).Select(x => x.Pc).ToList();
+        if (needRestart.Count > 0 &&
+            MessageBox.Show(this, "These PCs must restart for some settings to take effect:\n\n" + string.Join(", ", needRestart.Select(p => p.Name)) +
+                "\n\nRestart them now (10 second countdown)?", "Restart needed", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+        {
+            await Task.WhenAll(needRestart.Select(async pc => { try { await Net.CallAsync(pc.Host, Key, "restart", null, 8000); } catch { } }));
+            _status.Text += " Restart sent.";
+        }
+    }
+
+    async Task PushJoinAsync(List<PcItem> pcs, bool report)
+    {
+        var send = pcs.Where(p => AgentAtLeast(p.Software, JoinRev)).ToList();
+        var skipped = pcs.Except(send).ToList();
+        var json = Json.To(new JoinSetRequest(_d.JoinSalt, _d.JoinKey));
+        var results = await Task.WhenAll(send.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "set-join", json, 15000); return (Name: pc.Name, Ok: r.Ok, Msg: r.Error ?? ""); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Msg: ex.Message); }
+        }));
+        if (!report) return;
+        int done = results.Count(x => x.Ok);
+        _status.Text = $"Joining password set on {done} of {pcs.Count} PCs." +
+            (results.Any(x => !x.Ok) ? " Failed: " + string.Join("; ", results.Where(x => !x.Ok).Select(x => $"{x.Name} ({x.Msg})")) : "") +
+            (skipped.Count > 0 ? " Skipped (software too old, or offline): " + string.Join(", ", skipped.Select(p => p.Name)) + "." : "");
+    }
+
+    async Task SetJoiningPasswordAsync()
+    {
+        var a = new PasswordBox { Margin = new Thickness(0, 4, 0, 4) };
+        var b = new PasswordBox { Margin = new Thickness(0, 4, 0, 4) };
+        if (!Ui.Ask(this, "Joining password",
+                Ui.Label("Another admin app can only take over these PCs by knowing this password (otherwise it needs the long pairing key). At least 8 characters, longer is better. It is sent to every PC in the list now; only a scrambled form is kept."),
+                a, Ui.Label("Repeat it:"), b)) return;
+        if (a.Password.Length < 8 || a.Password != b.Password)
+        {
+            MessageBox.Show(this, "The passwords must match and be at least 8 characters.", "Joining password");
+            return;
+        }
+        var js = Join.NewSecret(a.Password);
+        _d.JoinSalt = js.SaltB64; _d.JoinKey = js.KeyB64;
+        _d.Save();
+        _status.Text = "Sending the joining password...";
+        await PushJoinAsync(_pcs.ToList(), true);
+    }
+
+    async Task JoinExistingAsync()
+    {
+        var hosts = new TextBox { AcceptsReturn = true, MinHeight = 70, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 4) };
+        var pw = new PasswordBox { Margin = new Thickness(0, 2, 0, 4) };
+        if (!Ui.Ask(this, "Join PCs of another admin app",
+                Ui.Label("Use this when the PCs already work with another admin app. Type the PC addresses and their joining password. This admin app then takes over the pairing key of those PCs."),
+                Ui.Label("PC addresses, one per line"), hosts, Ui.Label("Joining password"), pw)) return;
+
+        var list = hosts.Text.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(h => h.Trim()).Where(h => h.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (list.Count == 0 || pw.Password.Length == 0) { _status.Text = "Join: type the PC address(es) and the joining password."; return; }
+
+        _status.Text = "Joining...";
+        string? key = null, last = null;
+        foreach (var h in list)
+        {
+            try { key = await Join.JoinAsync(h, pw.Password); break; }
+            catch (Exception ex) { last = $"{h}: {ex.Message}"; if (ex.Message.StartsWith("Wrong")) break; }
+        }
+        if (key == null) { _status.Text = "Join failed. " + last; return; }
+
+        if (key != _d.KeyBase64 && _d.Pcs.Count > 0 &&
+            MessageBox.Show(this, "This replaces this admin app's pairing key with the one from the PCs you joined. PCs that were set up with the old key stop answering here. Continue?",
+                "Join", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) { _status.Text = "Join cancelled."; return; }
+        _d.KeyBase64 = key;
+        foreach (var h in list) AddHostQuiet(h);
+        _d.Save();
+        UpdateStats();
+        _status.Text = $"Joined. Managing {_pcs.Count} PC(s) now.";
+        await RefreshAsync();
     }
 
     const string DeleteAccountRev = "2026-11-06-d";

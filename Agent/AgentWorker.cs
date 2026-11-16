@@ -44,6 +44,13 @@ public class AgentWorker : BackgroundService
             using var ns = client.GetStream();
 
             var frame = await Net.ReadFrameAsync(ns, cts.Token);
+            if (JoinHandler.IsHello(frame)) { await Net.WriteFrameAsync(ns, JoinHandler.HelloReply(), cts.Token); return; }
+            if (JoinHandler.IsJoin(frame))
+            {
+                var answer = JoinHandler.TryJoin(frame, key, RememberNonce);
+                if (answer != null) await Net.WriteFrameAsync(ns, answer, cts.Token);
+                return;   // wrong joining password: no answer
+            }
             Request req;
             try { req = Json.From<Request>(Crypto.Decrypt(key, frame))!; }
             catch { return; } // wrong key or garbage: drop the connection silently
@@ -77,7 +84,7 @@ public class AgentWorker : BackgroundService
             switch (req.Cmd)
             {
                 case "ping":
-                    return Ok(Json.To(new PingInfo(Environment.MachineName, CurrentVersion(), BuildInfo.Revision, TeamViewerId.Get(), NicInfo.Primary().Mac, NicInfo.Primary().Broadcast)));
+                    return Ok(Json.To(new PingInfo(Environment.MachineName, CurrentVersion(), BuildInfo.Revision, TeamViewerId.Get(), NicInfo.Primary().Mac, NicInfo.Primary().Broadcast, File.Exists(Paths.JoinFile))));
 
                 case "scan":
                     return Ok(Json.To(SteamScanner.Scan()));
@@ -181,6 +188,10 @@ public class AgentWorker : BackgroundService
 
                 case "restart":
                     RunShutdown("/r /t 10 /f /c \"Restart requested from Kiosk Admin\"");
+                    return Ok();
+
+                case "set-join":
+                    JoinHandler.Set(Json.From<JoinSetRequest>(req.Data ?? "")!);
                     return Ok();
 
                 case "list-accounts":
