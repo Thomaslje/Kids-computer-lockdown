@@ -165,6 +165,7 @@ public class MainWindow : Window
                 Ribbon.Group("Remote control",
                     RB(Ribbon.Unlock, "Unlock to desktop", Go(() => RemoteAsync("unlock", "Unlock", "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again"))),
                     RB(Ribbon.Sync, "Restart", Go(() => RemoteAsync("restart", "Restart", "restart in 10 seconds"))),
+                    RB(Ribbon.Settings, "Recovery menu", Go(() => RemoteAsync("restart-recovery", "Restart to recovery menu", "restart in 10 seconds into the Windows recovery menu (Advanced options). It then waits at a blue screen until someone picks an option on that PC, so only use it when you can reach the PC. Windows Recovery must be enabled on it", RecoveryRev))),
                     RB(Ribbon.Power, "Shut down", Go(() => RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds")), Ribbon.Kind.Danger),
                     RB(Ribbon.Flash, "Wake up all", Go(WakeAllAsync))),
                 Ribbon.Group("PC list", RB(Ribbon.Add, "Add PC", () => AddPc()), RB(Ribbon.Delete, "Remove", () => RemovePc()), RB(Ribbon.Sync, "Check now", Go(RefreshAsync))),
@@ -483,10 +484,20 @@ public class MainWindow : Window
                        (ok > 0 ? " The PCs were removed from this list and will restart in about a minute." : "");
     }
 
-    async Task RemoteAsync(string cmd, string title, string what)
+    async Task RemoteAsync(string cmd, string title, string what, string minRev = "")
     {
         var targets = _pcList.SelectedItems.Cast<PcItem>().ToList();
         if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return; }
+        if (minRev.Length > 0)
+        {
+            var old = targets.Where(t => !AgentAtLeast(t.Software, minRev)).ToList();
+            if (old.Count > 0)
+            {
+                MessageBox.Show(this, "These PCs have software that is too old for this (use Update software... first): " + string.Join(", ", old.Select(t => t.Name)), title);
+                targets = targets.Except(old).ToList();
+                if (targets.Count == 0) return;
+            }
+        }
         var names = string.Join(", ", targets.Select(t => t.Name));
         var ask = $"{title}: {names}?\n\nThe PC will {what}.";
         if (MessageBox.Show(this, ask, title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
@@ -598,6 +609,7 @@ public class MainWindow : Window
     // ---------- setup wizard, joining password ----------
 
     const string JoinRev = "2026-11-16-a";
+    const string RecoveryRev = "2026-11-17-a";
 
     bool NeedsWizard => !_d.WizardDone && _d.Pcs.Count == 0 && string.IsNullOrEmpty(_d.Config.ExitPasswordHash);
 

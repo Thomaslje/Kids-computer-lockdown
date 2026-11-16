@@ -190,6 +190,11 @@ public class AgentWorker : BackgroundService
                     RunShutdown("/r /t 10 /f /c \"Restart requested from Kiosk Admin\"");
                     return Ok();
 
+                case "restart-recovery":
+                    // restarts into the Windows recovery menu (Advanced options); needs the Windows Recovery Environment to be on
+                    RunShutdown("/r /o /t 10 /f /c \"Restart to the recovery menu requested from Kiosk Admin\"");
+                    return Ok();
+
                 case "set-join":
                     JoinHandler.Set(Json.From<JoinSetRequest>(req.Data ?? "")!);
                     return Ok();
