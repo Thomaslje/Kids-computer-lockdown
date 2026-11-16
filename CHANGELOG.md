@@ -8,6 +8,7 @@ Releases are numbered `build-N` on GitHub. From now on the release notes are mad
 - Remote admin is its own tab (CMD, PowerShell, Task Manager, Registry, Device Manager, Event Viewer, Services, More... and the one-PC console windows).
 - The Setup wizard and "Join PCs of another admin app" moved to their own Setup menu (far right of the tab strip), out of the passwords. The pairing key is under Security.
 - The Setup wizard has a new look: numbered steps along the top and a white card, with an orange Next button.
+- The admin app no longer closes silently on an error: it shows a message, keeps running, and writes the details to %LOCALAPPDATA%\\KioskAdmin\\crash.log.
 - Nothing changes on the PCs: no new software version is needed.
 
 ## Next release - joining password and setup wizard

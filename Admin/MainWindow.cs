@@ -151,8 +151,12 @@ public class MainWindow : Window
         var otherItem = new MenuItem { Header = "Other program..." };
         otherItem.Click += async (_, _) => await AdminLaunchOtherAsync();
         moreMenu.Items.Add(new Separator()); moreMenu.Items.Add(otherItem);
-        Border? moreBtn = null;
-        moreBtn = RB(Ribbon.More, "More...", () => { moreMenu.PlacementTarget = moreBtn; moreMenu.Placement = PlacementMode.Bottom; moreMenu.IsOpen = true; });
+        Border MoreButton()
+        {
+            Border? mb = null;
+            mb = RB(Ribbon.More, "More...", () => { moreMenu.PlacementTarget = mb; moreMenu.Placement = PlacementMode.Bottom; moreMenu.IsOpen = true; });
+            return mb;
+        }
 
         var builders = new Dictionary<string, Func<UIElement>>
         {
@@ -184,7 +188,7 @@ public class MainWindow : Window
                     Sc(Ribbon.Cmd, "CMD", "Command Prompt", "cmd.exe", "/k cd /d C:\\"), Sc(Ribbon.Cmd, "PowerShell", "PowerShell", "powershell.exe", "-NoExit -NoLogo -Command Set-Location C:\\"),
                     Sc(Ribbon.App, "Task Manager", "Task Manager", "taskmgr.exe"), Sc(Ribbon.Settings, "Registry", "Registry Editor", "regedit.exe"),
                     Sc(Ribbon.Settings, "Device Manager", "Device Manager", "mmc.exe", "devmgmt.msc"), Sc(Ribbon.List, "Event Viewer", "Event Viewer", "mmc.exe", "eventvwr.msc"),
-                    Sc(Ribbon.Settings, "Services", "Services", "mmc.exe", "services.msc"), moreBtn!),
+                    Sc(Ribbon.Settings, "Services", "Services", "mmc.exe", "services.msc"), MoreButton()),
                 Ribbon.Group("Window on this PC",
                     RB(Ribbon.Cmd, "Console", () => OpenRemoteTools()), RB(Ribbon.List, "Processes", () => OpenRemoteTools()), RB(Ribbon.Settings, "Services", () => OpenRemoteTools()),
                     RB(Ribbon.App, "Programs", () => OpenRemoteTools()), RB(Ribbon.Camera, "Screenshot", () => OpenRemoteTools()))),
