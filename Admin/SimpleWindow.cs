@@ -7,7 +7,7 @@ using KioskShared;
 
 namespace KioskAdmin;
 
-/// <summary>The friendly view: the PCs with Restart and Shut down, nothing else.</summary>
+/// <summary>The friendly view: the PCs with Wake up, Restart and Shut down, nothing else.</summary>
 public class SimpleWindow : Window
 {
     readonly AdminData _d;
@@ -25,10 +25,10 @@ public class SimpleWindow : Window
         _d = d;
         Title = "Kiosk PCs";
         Theme.Skin(this);
-        Width = 600; Height = 480; MinWidth = 420; MinHeight = 360;
+        Width = 680; Height = 480; MinWidth = 520; MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        foreach (var p in d.Pcs) _pcs.Add(new PcItem { Host = p.Host, Name = p.Host });
+        foreach (var p in d.Pcs) _pcs.Add(new PcItem { Host = p.Host, Name = p.Host, Mac = p.Mac, Broadcast = p.Broadcast });
         _list.ItemsSource = _pcs;
         var gv = new GridView();
         gv.Columns.Add(new GridViewColumn { Header = "PC", DisplayMemberBinding = new Binding("Name"), Width = 220 });
@@ -47,12 +47,14 @@ public class SimpleWindow : Window
         var restart = new Button { Content = "Restart", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(0, 0, 8, 0) };
         restart.Click += async (_, _) => await SendAsync("restart", "Restart", "restart");
         restart.Style = Theme.Get("PrimaryButton");
+        var wake = new Button { Content = "Wake up", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(0, 0, 8, 0) };
+        wake.Click += async (_, _) => await WakeAsync();
         var shutdown = new Button { Content = "Shut down", Padding = new Thickness(18, 6, 18, 6) };
         shutdown.Style = Theme.Get("DangerButton");
         shutdown.Click += async (_, _) => await SendAsync("shutdown", "Shut down", "shut down");
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        buttons.Children.Add(all); buttons.Children.Add(restart); buttons.Children.Add(shutdown);
+        buttons.Children.Add(all); buttons.Children.Add(wake); buttons.Children.Add(restart); buttons.Children.Add(shutdown);
 
         var panel = new DockPanel { Margin = new Thickness(14) };
         var bottom = new StackPanel();
@@ -92,6 +94,13 @@ public class SimpleWindow : Window
                         pc.Name = info.PcName;
                         pc.TeamViewer = info.TeamViewerId;
                         pc.Status = "Online";
+                        if (!string.IsNullOrEmpty(info.Mac))
+                        {
+                            pc.Mac = info.Mac; pc.Broadcast = info.Broadcast;
+                            var entry = _d.Pcs.FirstOrDefault(e => e.Host == pc.Host);
+                            if (entry != null && (entry.Mac != info.Mac || entry.Broadcast != info.Broadcast))
+                            { entry.Mac = info.Mac; entry.Broadcast = info.Broadcast; _d.Save(); }
+                        }
                     }
                     else pc.Status = "No answer";
                 }
@@ -99,6 +108,25 @@ public class SimpleWindow : Window
             }));
         }
         finally { _refreshing = false; }
+    }
+
+    /// <summary>Wake-on-LAN for the selected PCs, or for all PCs when none is selected.</summary>
+    async Task WakeAsync()
+    {
+        var picked = _list.SelectedItems.Cast<PcItem>().ToList();
+        var targets = picked.Count > 0 ? picked : _pcs.ToList();
+        if (targets.Count == 0) { Say("There are no PCs in the list."); return; }
+        var known = targets.Where(p => Wol.TryParseMac(p.Mac, out _)).ToList();
+        if (known.Count == 0)
+        {
+            Say("Wake up does not know these PCs yet. Open this program while they are on, wait for Online, then it works when they are off.");
+            return;
+        }
+        int sent = 0;
+        foreach (var pc in known) if (await Wol.SendAsync(pc.Mac, pc.Broadcast)) sent++;
+        var unknown = targets.Except(known).Select(p => p.Name).ToList();
+        Say($"Wake up sent to {sent} of {targets.Count} PC(s)" + (picked.Count == 0 ? " (all PCs)" : "") + ". They take about a minute to start." +
+            (unknown.Count > 0 ? " Not known yet: " + string.Join(", ", unknown) + "." : ""));
     }
 
     async Task SendAsync(string cmd, string title, string verb)

@@ -10,6 +10,7 @@ Releases are numbered `build-N` on GitHub. From now on the release notes are mad
 - The Setup wizard has a new look: numbered steps along the top and a white card, with an orange Next button.
 - The admin app no longer closes silently on an error: it shows a message, keeps running, and writes the details to %LOCALAPPDATA%\\KioskAdmin\\crash.log.
 - Adding a new PC now asks "Apply your saved defaults to this PC?". Yes sends what the wizard set (exit password, tiles and heading, Ctrl+Alt+Del setting, tweaks, joining password) and asks once for the Kiosk account password and the administrator account password, because those two are never stored. The same thing is available any time as Home > Apply defaults, or Setup > Apply my defaults to selected PCs.
+- The simple view (simple password) now has a "Wake up" button too: wakes the selected PCs, or all of them when none is selected. It uses the network card addresses the admin app has learned; the PCs must have been seen online once.
 - New "Recovery menu" button next to Restart on the Home tab: restarts the selected PCs into the Windows recovery menu (Advanced options) after 10 seconds. It is not in the simple view. Needs software 2026-11-17-a on the PCs, and Windows Recovery (WinRE) enabled on them.
 - Needs software 2026-11-17-a on the PCs only for the Recovery menu button; everything else works with the current software.
 
