@@ -165,7 +165,7 @@ public class MainWindow : Window
                 Ribbon.Group("Remote control",
                     RB(Ribbon.Unlock, "Unlock to desktop", Go(() => RemoteAsync("unlock", "Unlock", "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again"))),
                     RB(Ribbon.Sync, "Restart", Go(() => RemoteAsync("restart", "Restart", "restart in 10 seconds"))),
-                    RB(Ribbon.Settings, "Recovery menu", Go(() => RemoteAsync("restart-recovery", "Restart to recovery menu", "restart in 10 seconds into the Windows recovery menu (Advanced options). It then waits at a blue screen until someone picks an option on that PC, so only use it when you can reach the PC. Windows Recovery must be enabled on it", RecoveryRev))),
+                    RB(Ribbon.Settings, "Recovery menu", Go(RecoveryAsync)),
                     RB(Ribbon.Power, "Shut down", Go(() => RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds")), Ribbon.Kind.Danger),
                     RB(Ribbon.Flash, "Wake up all", Go(WakeAllAsync))),
                 Ribbon.Group("PC list", RB(Ribbon.Add, "Add PC", () => AddPc()), RB(Ribbon.Delete, "Remove", () => RemovePc()), RB(Ribbon.Sync, "Check now", Go(RefreshAsync))),
@@ -518,6 +518,76 @@ public class MainWindow : Window
         _status.Text = $"{title}: sent to {ok} of {results.Length} PCs." + (ok < results.Length ? " Failed: " + string.Join(", ", failed) : "");
     }
 
+    /// <summary>Restart to the Windows recovery menu. The first time on a PC it checks that Windows Recovery is on and offers to turn it on.</summary>
+    async Task RecoveryAsync()
+    {
+        var targets = _pcList.SelectedItems.Cast<PcItem>().ToList();
+        if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return; }
+        var old = targets.Where(t => !AgentAtLeast(t.Software, RecoveryRev)).ToList();
+        if (old.Count > 0)
+        {
+            MessageBox.Show(this, "These PCs have software that is too old for this (use Update software... first): " + string.Join(", ", old.Select(t => t.Name)), "Recovery menu");
+            targets = targets.Except(old).ToList();
+            if (targets.Count == 0) return;
+        }
+        if (MessageBox.Show(this,
+                $"Restart to the recovery menu: {string.Join(", ", targets.Select(t => t.Name))}?\n\nThe PC restarts in 10 seconds into the Windows recovery menu (Advanced options). " +
+                "It then waits at a blue screen until someone picks an option on that PC, so only use this when you can reach it.",
+                "Recovery menu", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        _status.Text = "Recovery menu: checking...";
+        PcEntry? Entry(PcItem p) => _d.Pcs.FirstOrDefault(e => e.Host == p.Host);
+        var first = targets.Where(t => Entry(t)?.RecoveryChecked != true).ToList();
+
+        // first time on a PC: is Windows Recovery on?
+        var off = new List<PcItem>();
+        var skip = new List<string>();
+        await Task.WhenAll(first.Select(async pc =>
+        {
+            try
+            {
+                var r = await Net.CallAsync(pc.Host, Key, "recovery-info", null, 20000);
+                if (!r.Ok) { lock (skip) skip.Add($"{pc.Name} ({r.Error})"); return; }
+                if (r.Data == "enabled") { var e = Entry(pc); if (e != null) e.RecoveryChecked = true; }
+                else lock (off) off.Add(pc);
+            }
+            catch (Exception ex) { lock (skip) skip.Add($"{pc.Name} ({ex.Message})"); }
+        }));
+
+        if (off.Count > 0)
+        {
+            if (MessageBox.Show(this,
+                    "Windows Recovery is turned off on: " + string.Join(", ", off.Select(p => p.Name)) +
+                    "\n\nWithout it, a restart to the recovery menu just restarts normally.\n\nTurn it on now and then restart to the recovery menu?",
+                    "Windows Recovery is off", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                _status.Text = "Turning on Windows Recovery...";
+                await Task.WhenAll(off.Select(async pc =>
+                {
+                    try
+                    {
+                        var r = await Net.CallAsync(pc.Host, Key, "recovery-enable", null, 60000);
+                        if (r.Ok) { var e = Entry(pc); if (e != null) e.RecoveryChecked = true; }
+                        else lock (skip) skip.Add($"{pc.Name} (could not turn on: {r.Error})");
+                    }
+                    catch (Exception ex) { lock (skip) skip.Add($"{pc.Name} ({ex.Message})"); }
+                }));
+            }
+            else foreach (var pc in off) skip.Add($"{pc.Name} (Windows Recovery is off)");
+        }
+        _d.Save();
+
+        var send = targets.Where(t => Entry(t)?.RecoveryChecked == true).ToList();
+        var results = await Task.WhenAll(send.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "restart-recovery", null, 8000); return (Name: pc.Name, Ok: r.Ok, Err: r.Error ?? ""); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Err: ex.Message); }
+        }));
+        int ok = results.Count(r => r.Ok);
+        var failed = results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Err})").Concat(skip).ToList();
+        _status.Text = $"Recovery menu: restart sent to {ok} of {targets.Count} PCs." + (failed.Count > 0 ? " Not done: " + string.Join(", ", failed) + "." : "");
+    }
+
     // ---------- kiosk options (password, Ctrl+Alt+Del) ----------
 
     sealed record OptRes(PcItem Pc, bool Ok, string Err, bool Restart, string Notes);
@@ -609,7 +679,7 @@ public class MainWindow : Window
     // ---------- setup wizard, joining password ----------
 
     const string JoinRev = "2026-11-16-a";
-    const string RecoveryRev = "2026-11-17-a";
+    const string RecoveryRev = "2026-11-20-a";
 
     bool NeedsWizard => !_d.WizardDone && _d.Pcs.Count == 0 && string.IsNullOrEmpty(_d.Config.ExitPasswordHash);
 
