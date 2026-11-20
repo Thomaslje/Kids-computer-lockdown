@@ -679,7 +679,7 @@ public class MainWindow : Window
     // ---------- setup wizard, joining password ----------
 
     const string JoinRev = "2026-11-16-a";
-    const string RecoveryRev = "2026-11-20-a";
+    const string RecoveryRev = "2026-11-20-b";
 
     bool NeedsWizard => !_d.WizardDone && _d.Pcs.Count == 0 && string.IsNullOrEmpty(_d.Config.ExitPasswordHash);
 

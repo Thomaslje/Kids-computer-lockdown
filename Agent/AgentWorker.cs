@@ -200,8 +200,11 @@ public class AgentWorker : BackgroundService
                 }
 
                 case "restart-recovery":
-                    // restarts into the Windows recovery menu (Advanced options); needs the Windows Recovery Environment to be on
-                    RunShutdown("/r /o /t 10 /f /c \"Restart to the recovery menu requested from Kiosk Admin\"");
+                    // "shutdown /r /o" is refused when run from a service (error 87), so tell Windows to boot into the recovery
+                    // environment next time (reagentc /boottore) and restart normally
+                    try { Proc.Run("reagentc.exe", true, "/boottore"); }
+                    catch (Exception ex) { return Fail("Could not set the next start to the recovery menu: " + ex.Message); }
+                    RunShutdown("/r /t 10 /f /c \"Restart to the recovery menu requested from Kiosk Admin\"");
                     return Ok();
 
                 case "set-join":
