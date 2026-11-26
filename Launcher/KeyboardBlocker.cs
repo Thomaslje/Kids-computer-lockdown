@@ -42,7 +42,7 @@ sealed class KeyboardBlocker : IDisposable
 
             bool block =
                 vk == 0x5B || vk == 0x5C                    // left/right Windows key
-                || (alt && (vk == 0x09 || vk == 0x1B))      // Alt+Tab, Alt+Esc
+                || (alt && vk == 0x1B)                      // Alt+Esc (Alt+Tab is allowed, so a minimised program can be brought back)
                 || (ctrl && vk == 0x1B)                     // Ctrl+Esc, Ctrl+Shift+Esc
                 || (alt && vk == 0x73 && LauncherHasFocus()); // Alt+F4 on the launcher itself
 

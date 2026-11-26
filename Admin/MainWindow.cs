@@ -165,7 +165,7 @@ public class MainWindow : Window
                 Ribbon.Group("Remote control",
                     RB(Ribbon.Unlock, "Unlock to desktop", Go(() => RemoteAsync("unlock", "Unlock", "leave kiosk mode and show the normal Windows desktop. Restart the PC to lock it again"))),
                     RB(Ribbon.Sync, "Restart", Go(() => RemoteAsync("restart", "Restart", "restart in 10 seconds"))),
-                    RB(Ribbon.Settings, "Recovery menu", Go(() => RemoteAsync("restart-recovery", "Restart to recovery menu", "restart in 10 seconds into the Windows recovery menu (Advanced options). It then waits at a blue screen until someone picks an option on that PC, so only use it when you can reach the PC. Windows Recovery must be enabled on it", RecoveryRev))),
+                    RB(Ribbon.Settings, "Recovery menu", Go(RecoveryAsync)),
                     RB(Ribbon.Power, "Shut down", Go(() => RemoteAsync("shutdown", "Shut down", "shut down in 10 seconds")), Ribbon.Kind.Danger),
                     RB(Ribbon.Flash, "Wake up all", Go(WakeAllAsync))),
                 Ribbon.Group("PC list", RB(Ribbon.Add, "Add PC", () => AddPc()), RB(Ribbon.Delete, "Remove", () => RemovePc()), RB(Ribbon.Sync, "Check now", Go(RefreshAsync))),
@@ -226,7 +226,12 @@ public class MainWindow : Window
         miJoin.Click += async (_, _) => await JoinExistingAsync();
         var miApply = new MenuItem { Header = "Apply my defaults to selected PCs..." };
         miApply.Click += async (_, _) => await ApplyDefaultsAsync(Sel());
+        var miExport = new MenuItem { Header = "Export settings..." };
+        miExport.Click += (_, _) => ExportSettings();
+        var miImport = new MenuItem { Header = "Import settings..." };
+        miImport.Click += (_, _) => ImportSettings();
         setupMenu.Items.Add(miWizard); setupMenu.Items.Add(miApply); setupMenu.Items.Add(new Separator()); setupMenu.Items.Add(miJoin);
+        setupMenu.Items.Add(new Separator()); setupMenu.Items.Add(miExport); setupMenu.Items.Add(miImport);
         Border? setupTab = null;
         setupTab = Ribbon.Tab("Setup \u25BE", true, () => { setupMenu.PlacementTarget = setupTab; setupMenu.Placement = PlacementMode.Bottom; setupMenu.IsOpen = true; });
         DockPanel.SetDock(setupTab, Dock.Right);
@@ -518,6 +523,76 @@ public class MainWindow : Window
         _status.Text = $"{title}: sent to {ok} of {results.Length} PCs." + (ok < results.Length ? " Failed: " + string.Join(", ", failed) : "");
     }
 
+    /// <summary>Restart to the Windows recovery menu. The first time on a PC it checks that Windows Recovery is on and offers to turn it on.</summary>
+    async Task RecoveryAsync()
+    {
+        var targets = _pcList.SelectedItems.Cast<PcItem>().ToList();
+        if (targets.Count == 0) { _status.Text = "Select one or more PCs in the list first."; return; }
+        var old = targets.Where(t => !AgentAtLeast(t.Software, RecoveryRev)).ToList();
+        if (old.Count > 0)
+        {
+            MessageBox.Show(this, "These PCs have software that is too old for this (use Update software... first): " + string.Join(", ", old.Select(t => t.Name)), "Recovery menu");
+            targets = targets.Except(old).ToList();
+            if (targets.Count == 0) return;
+        }
+        if (MessageBox.Show(this,
+                $"Restart to the recovery menu: {string.Join(", ", targets.Select(t => t.Name))}?\n\nThe PC restarts in 10 seconds into the Windows recovery menu (Advanced options). " +
+                "It then waits at a blue screen until someone picks an option on that PC, so only use this when you can reach it.",
+                "Recovery menu", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        _status.Text = "Recovery menu: checking...";
+        PcEntry? Entry(PcItem p) => _d.Pcs.FirstOrDefault(e => e.Host == p.Host);
+        var first = targets.Where(t => Entry(t)?.RecoveryChecked != true).ToList();
+
+        // first time on a PC: is Windows Recovery on?
+        var off = new List<PcItem>();
+        var skip = new List<string>();
+        await Task.WhenAll(first.Select(async pc =>
+        {
+            try
+            {
+                var r = await Net.CallAsync(pc.Host, Key, "recovery-info", null, 20000);
+                if (!r.Ok) { lock (skip) skip.Add($"{pc.Name} ({r.Error})"); return; }
+                if (r.Data == "enabled") { var e = Entry(pc); if (e != null) e.RecoveryChecked = true; }
+                else lock (off) off.Add(pc);
+            }
+            catch (Exception ex) { lock (skip) skip.Add($"{pc.Name} ({ex.Message})"); }
+        }));
+
+        if (off.Count > 0)
+        {
+            if (MessageBox.Show(this,
+                    "Windows Recovery is turned off on: " + string.Join(", ", off.Select(p => p.Name)) +
+                    "\n\nWithout it, a restart to the recovery menu just restarts normally.\n\nTurn it on now and then restart to the recovery menu?",
+                    "Windows Recovery is off", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                _status.Text = "Turning on Windows Recovery...";
+                await Task.WhenAll(off.Select(async pc =>
+                {
+                    try
+                    {
+                        var r = await Net.CallAsync(pc.Host, Key, "recovery-enable", null, 60000);
+                        if (r.Ok) { var e = Entry(pc); if (e != null) e.RecoveryChecked = true; }
+                        else lock (skip) skip.Add($"{pc.Name} (could not turn on: {r.Error})");
+                    }
+                    catch (Exception ex) { lock (skip) skip.Add($"{pc.Name} ({ex.Message})"); }
+                }));
+            }
+            else foreach (var pc in off) skip.Add($"{pc.Name} (Windows Recovery is off)");
+        }
+        _d.Save();
+
+        var send = targets.Where(t => Entry(t)?.RecoveryChecked == true).ToList();
+        var results = await Task.WhenAll(send.Select(async pc =>
+        {
+            try { var r = await Net.CallAsync(pc.Host, Key, "restart-recovery", null, 8000); return (Name: pc.Name, Ok: r.Ok, Err: r.Error ?? ""); }
+            catch (Exception ex) { return (Name: pc.Name, Ok: false, Err: ex.Message); }
+        }));
+        int ok = results.Count(r => r.Ok);
+        var failed = results.Where(r => !r.Ok).Select(r => $"{r.Name} ({r.Err})").Concat(skip).ToList();
+        _status.Text = $"Recovery menu: restart sent to {ok} of {targets.Count} PCs." + (failed.Count > 0 ? " Not done: " + string.Join(", ", failed) + "." : "");
+    }
+
     // ---------- kiosk options (password, Ctrl+Alt+Del) ----------
 
     sealed record OptRes(PcItem Pc, bool Ok, string Err, bool Restart, string Notes);
@@ -609,7 +684,7 @@ public class MainWindow : Window
     // ---------- setup wizard, joining password ----------
 
     const string JoinRev = "2026-11-16-a";
-    const string RecoveryRev = "2026-11-17-a";
+    const string RecoveryRev = "2026-11-20-b";
 
     bool NeedsWizard => !_d.WizardDone && _d.Pcs.Count == 0 && string.IsNullOrEmpty(_d.Config.ExitPasswordHash);
 
@@ -627,6 +702,23 @@ public class MainWindow : Window
         _d.WizardDone = true;
         if (!finished) { _d.Save(); return; }
         var r = w.Result;
+        if (r.ImportMode && r.Imported != null)
+        {
+            // restore the old admin app's settings, add the few things the file did not have, then restart with them
+            var imp = r.Imported;
+            if (r.ExitPassword.Length > 0) imp.Config.ExitPasswordHash = Passwords.Hash(r.ExitPassword);
+            if (r.StartPassword.Length > 0) imp.LockHash = Passwords.Hash(r.StartPassword);
+            if (r.JoinPassword.Length > 0) { var js = Join.NewSecret(r.JoinPassword); imp.JoinSalt = js.SaltB64; imp.JoinKey = js.KeyB64; }
+            imp.WizardDone = true;
+            try
+            {
+                imp.Save();
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true }); } catch { }
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex) { _status.Text = "Import failed: " + ex.Message; }
+            return;
+        }
         foreach (var h in r.Hosts) AddHostQuiet(h);
 
         if (r.JoinMode)
@@ -754,6 +846,60 @@ public class MainWindow : Window
         _d.Save();
         _status.Text = "Sending the joining password...";
         await PushJoinAsync(_pcs.ToList(), true);
+    }
+
+    // ---------- export / import of all settings ----------
+
+    void ExportSettings()
+    {
+        var pw1 = new PasswordBox { Margin = new Thickness(0, 2, 0, 4) };
+        var pw2 = new PasswordBox { Margin = new Thickness(0, 2, 0, 4) };
+        if (!Ui.Ask(this, "Export settings",
+                Ui.Label("Saves everything in this admin app in one file: the PCs, the pairing key, the kids' screen tiles and heading, tweaks, the passwords' locks, saved programs and GitHub settings."),
+                Ui.Label($"The file is locked with a password. You need it to import the file, and it cannot be recovered if you forget it. The file holds the key to all your PCs, so keep it safe."),
+                Ui.Label($"Password for the file (at least {SettingsBackup.MinPasswordLength} characters)"), pw1, Ui.Label("Type it again"), pw2)) return;
+        if (pw1.Password.Length < SettingsBackup.MinPasswordLength) { _status.Text = $"Export: the password must be at least {SettingsBackup.MinPasswordLength} characters."; return; }
+        if (pw1.Password != pw2.Password) { _status.Text = "Export: the two passwords are not the same."; return; }
+
+        var dlg = new SaveFileDialog
+        {
+            Title = "Save the settings file", FileName = $"KioskAdmin-settings-{DateTime.Now:yyyy-MM-dd}.kioskbackup",
+            Filter = "Kiosk Admin settings|*.kioskbackup", DefaultExt = ".kioskbackup"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            _d.Config.Title = _titleBox.Text;
+            SettingsBackup.Export(_d, pw1.Password, dlg.FileName);
+            _status.Text = "Settings exported to " + dlg.FileName;
+        }
+        catch (Exception ex) { _status.Text = "Export failed: " + ex.Message; }
+    }
+
+    void ImportSettings()
+    {
+        var dlg = new OpenFileDialog { Title = "Pick the settings file", Filter = "Kiosk Admin settings|*.kioskbackup|All files|*.*" };
+        if (dlg.ShowDialog(this) != true) return;
+        var pw = new PasswordBox { Margin = new Thickness(0, 2, 0, 4) };
+        if (!Ui.Ask(this, "Import settings", Ui.Label("Password for the file"), pw)) return;
+
+        AdminData imported;
+        try { imported = SettingsBackup.Import(dlg.FileName, pw.Password); }
+        catch (Exception ex) { _status.Text = "Import failed: " + ex.Message; return; }
+
+        if (MessageBox.Show(this,
+                $"The file holds {imported.Pcs.Count} PC(s) and {imported.Config.Tiles.Count} tile(s).\n\nImporting REPLACES all settings in this admin app (PCs, pairing key, tiles, passwords' locks). " +
+                "The current settings are first saved as a backup copy next to the settings file.\n\nImport and restart the admin app?",
+                "Import settings", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) { _status.Text = "Import cancelled."; return; }
+        try
+        {
+            var current = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KioskAdmin", "admin.json");
+            if (System.IO.File.Exists(current)) System.IO.File.Copy(current, current + ".before-import-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"), true);
+            imported.Save();
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true }); } catch { }
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex) { _status.Text = "Import failed: " + ex.Message; }
     }
 
     async Task JoinExistingAsync()

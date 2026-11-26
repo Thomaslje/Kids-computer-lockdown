@@ -15,6 +15,8 @@ public sealed class WizardResult
     public string Title = "";
     public string StartPassword = "", FriendlyPassword = "";
     public string? JoinedKeyB64;     // join mode: the pairing key fetched from a PC
+    public bool ImportMode;          // import mode: restore a settings file from an old admin app
+    public AdminData? Imported;      // import mode: the settings from the file (only the missing items are asked in the wizard)
 }
 
 /// <summary>First-start wizard: pick default passwords, an admin account and tweaks, then Finish pushes them to every PC.</summary>
@@ -24,8 +26,8 @@ public sealed class SetupWizard : Window
 
     public WizardResult Result { get; } = new();
 
-    readonly List<Page> _newPages = new(), _joinPages = new();
-    List<Page> _pages => _modeJoin.IsChecked == true ? _joinPages : _newPages;
+    readonly List<Page> _newPages = new(), _joinPages = new(), _importPages = new();
+    List<Page> _pages => _modeImport.IsChecked == true ? _importPages : _modeJoin.IsChecked == true ? _joinPages : _newPages;
     readonly TextBlock _title = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
     readonly TextBlock _help = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 12), MaxWidth = 560 };
     readonly TextBlock _error = new() { Foreground = System.Windows.Media.Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, MaxWidth = 560, Margin = new Thickness(0, 8, 0, 0) };
@@ -40,6 +42,14 @@ public sealed class SetupWizard : Window
     // fields
     readonly RadioButton _modeNew = new() { Content = "Set up my PCs now (first time, or PCs that have no admin app yet)", IsChecked = true, Margin = new Thickness(0, 4, 0, 4) };
     readonly RadioButton _modeJoin = new() { Content = "My PCs already work with another admin app: join them (needs their joining password)", Margin = new Thickness(0, 4, 0, 4) };
+    readonly RadioButton _modeImport = new() { Content = "I have a settings file from my old admin app: import it (.kioskbackup)", Margin = new Thickness(0, 4, 0, 4) };
+    readonly PasswordBox _importPw = new() { Margin = new Thickness(0, 2, 0, 4) };
+    readonly TextBlock _importFile = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 560, Margin = new Thickness(0, 2, 0, 4), Foreground = System.Windows.Media.Brushes.Gray, Text = "No file picked yet." };
+    readonly TextBlock _importStatus = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 560, Margin = new Thickness(0, 8, 0, 0) };
+    readonly TextBlock _importSummary = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 560 };
+    readonly PasswordBox _iStart1 = new(), _iStart2 = new(), _iExit1 = new(), _iExit2 = new(), _iJoin1 = new(), _iJoin2 = new();
+    string? _importPath;
+    AdminData? _imported;
     readonly TextBox _hostsJoin = new() { AcceptsReturn = true, MinHeight = 90, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 2, 0, 4) };
     readonly TextBox _hosts = new() { AcceptsReturn = true, MinHeight = 90, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly PasswordBox _start1 = new(), _start2 = new(), _friend1 = new(), _friend2 = new(), _exit1 = new(), _exit2 = new(), _kiosk1 = new(), _kiosk2 = new(), _adminPw1 = new(), _adminPw2 = new(), _join1 = new(), _join2 = new(), _joinOld = new();
@@ -68,6 +78,10 @@ public sealed class SetupWizard : Window
         BuildPages(data);
         _joinPages.Add(_newPages[0]);
         _joinPages.Add(JoinPage());
+        _importPages.Add(_newPages[0]);
+        _importPages.Add(ImportPage());
+        _importPages.Add(ImportReadyPage());
+        foreach (var c in new Control[] { _iStart1, _iStart2, _iExit1, _iExit2, _iJoin1, _iJoin2 }) c.Margin = new Thickness(0, 2, 0, 4);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         buttons.Children.Add(_cancel); buttons.Children.Add(_back); buttons.Children.Add(_next);
@@ -100,7 +114,7 @@ public sealed class SetupWizard : Window
     {
         // 0: welcome
         _newPages.Add(new Page("Welcome", "This wizard sets the defaults for your kids' PCs and, when you press Finish, sends them to every PC in your list. " +
-            "You can run it again later from Setup > Setup wizard.", Stack(_modeNew, _modeJoin), () => null));
+            "You can run it again later from Setup > Setup wizard. Moving to a new admin app? Choose the last option to import your old settings.", Stack(_modeNew, _modeJoin, _modeImport), () => null));
 
         // 1: PCs (setup mode) / join (join mode)
         _newPages.Add(new Page("Your PCs", "Type the name or IP address of every kids' PC, one per line. The kiosk software must already be installed on them (KioskSetup.exe with this admin app's pairing key).",
@@ -201,6 +215,86 @@ public sealed class SetupWizard : Window
         // 8: summary
         _newPages.Add(new Page("Ready", "Press Finish to send everything to the PCs. PCs that are off or have old software are listed afterwards; you can run the wizard again for them.",
             Stack(_summary), () => null));
+    }
+
+    // import mode: pick the settings file, unlock it, then ask only for what the file does not contain
+    Page ImportPage() => new("Import your settings",
+        "Pick the settings file you exported from the old admin app (Setup > Export settings) and type its password. Everything in the file is restored: PCs, pairing key, tiles, tweaks and passwords' locks. " +
+        "You are only asked afterwards for things the file does not have.",
+        Stack(Ui.Label("Settings file"), _importFile, ImportPickButton(), Ui.Label("Password for the file"), _importPw, ImportLoadButton(), _importStatus),
+        () => _imported != null ? null : "Pick the file, type its password and press \"Unlock file\" first.");
+
+    Button ImportPickButton()
+    {
+        var b = new Button { Content = "Pick file...", Width = 120, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 4) };
+        b.Click += (_, _) =>
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Pick the settings file", Filter = "Kiosk Admin settings|*.kioskbackup|All files|*.*" };
+            if (dlg.ShowDialog(this) != true) return;
+            _importPath = dlg.FileName; _importFile.Text = dlg.FileName; _imported = null; _importStatus.Text = "";
+        };
+        return b;
+    }
+
+    Button ImportLoadButton()
+    {
+        var b = new Button { Content = "Unlock file", Width = 120, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+        b.Click += (_, _) =>
+        {
+            if (_importPath == null) { _importStatus.Text = "Pick the file first."; return; }
+            if (_importPw.Password.Length == 0) { _importStatus.Text = "Type the password for the file."; return; }
+            try { _imported = SettingsBackup.Import(_importPath, _importPw.Password); }
+            catch (Exception ex) { _imported = null; _importStatus.Text = ex.Message; return; }
+            RebuildImportTail(_imported);
+            _importStatus.Text = $"Unlocked: {_imported.Pcs.Count} PC(s), {_imported.Config.Tiles.Count} tile(s). Press Next.";
+        };
+        return b;
+    }
+
+    Page ImportReadyPage() => new("Ready",
+        "Press Finish to restore these settings. The admin app then restarts with them, and your PCs answer as before because the pairing key is restored too.",
+        Stack(_importSummary), () => null);
+
+    /// <summary>After unlocking: the steps that are still needed (only what the file does not hold) and the closing page.</summary>
+    void RebuildImportTail(AdminData imp)
+    {
+        while (_importPages.Count > 2) _importPages.RemoveAt(2);
+        // a control can only sit in one panel, and the old pages' panels may still hold these
+        foreach (FrameworkElement c in new FrameworkElement[] { _iStart1, _iStart2, _iExit1, _iExit2, _iJoin1, _iJoin2, _importSummary })
+            if (c.Parent is Panel old) old.Children.Remove(c);
+        _iStart1.Clear(); _iStart2.Clear(); _iExit1.Clear(); _iExit2.Clear(); _iJoin1.Clear(); _iJoin2.Clear();
+        var missing = new List<string>();
+
+        if (string.IsNullOrEmpty(imp.Config.ExitPasswordHash))
+        {
+            missing.Add("exit password");
+            _importPages.Add(new Page("Exit password", "The file has no exit password. It lets you leave kiosk mode on a kids' PC. Choose one (at least 4 characters).",
+                Stack(Ui.Label("Exit password"), _iExit1, Ui.Label("Repeat the exit password"), _iExit2),
+                () => _iExit1.Password.Length < 4 ? "The exit password must be at least 4 characters."
+                    : _iExit1.Password != _iExit2.Password ? "The two exit passwords are not the same." : null));
+        }
+        if (string.IsNullOrEmpty(imp.LockHash))
+        {
+            missing.Add("start password");
+            _importPages.Add(new Page("Start password", "The file has no start password for the admin app. It is asked every time the admin app opens. Leave both empty to go without.",
+                Stack(Ui.Label("Start password (optional)"), _iStart1, Ui.Label("Repeat the start password"), _iStart2),
+                () => _iStart1.Password.Length == 0 && _iStart2.Password.Length == 0 ? null
+                    : _iStart1.Password.Length < 4 ? "The start password must be at least 4 characters."
+                    : _iStart1.Password != _iStart2.Password ? "The two start passwords are not the same." : null));
+        }
+        if (string.IsNullOrEmpty(imp.JoinKey))
+        {
+            missing.Add("joining password");
+            _importPages.Add(new Page("Joining password", "The file has no joining password. PCs that already have the kiosk software then refuse other admin apps. Choose one (at least 8 characters), or leave both empty to go without.",
+                Stack(Ui.Label("Joining password (optional)"), _iJoin1, Ui.Label("Repeat the joining password"), _iJoin2),
+                () => _iJoin1.Password.Length == 0 && _iJoin2.Password.Length == 0 ? null
+                    : _iJoin1.Password.Length < 8 ? "The joining password must be at least 8 characters."
+                    : _iJoin1.Password != _iJoin2.Password ? "The two joining passwords are not the same." : null));
+        }
+        _importSummary.Text = $"PCs: {imp.Pcs.Count}\nKids' screen tiles: {imp.Config.Tiles.Count}\n" +
+            (missing.Count == 0 ? "Everything needed was in the file." : "Set now because the file did not have them: " + string.Join(", ", missing) + ".");
+        _importPages.Add(ImportReadyPage());
+        BuildStepper();
     }
 
     // join mode page (replaces pages 1..6)
@@ -306,6 +400,13 @@ public sealed class SetupWizard : Window
         if (msg != null) { _error.Text = msg; return; }
         if (_index < _pages.Count - 1) { GoTo(_index + 1); return; }
 
+        if (_modeImport.IsChecked == true)
+        {
+            Result.ImportMode = true; Result.Imported = _imported;
+            Result.ExitPassword = _iExit1.Password; Result.StartPassword = _iStart1.Password; Result.JoinPassword = _iJoin1.Password;
+            DialogResult = true;
+            return;
+        }
         Result.JoinMode = _modeJoin.IsChecked == true;
         Result.Hosts = ParseHosts(Result.JoinMode ? _hostsJoin : _hosts);
         if (!Result.JoinMode)

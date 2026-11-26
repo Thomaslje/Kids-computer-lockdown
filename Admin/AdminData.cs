@@ -9,6 +9,7 @@ public class PcEntry
     public string Host { get; set; } = "";
     public string Mac { get; set; } = "";          // learned from the PC, used for Wake-on-LAN
     public string Broadcast { get; set; } = "";
+    public bool RecoveryChecked { get; set; }      // Windows Recovery has been checked (and turned on if needed) the first time the Recovery menu button was used
 }
 
 public class SavedProgram
